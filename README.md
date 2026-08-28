@@ -1,4 +1,4 @@
-# PR Dashboard
+# Daily Dashboard
 
 Local dashboard for **your** open GitHub PRs and in-progress Linear tickets, with a daily standup panel on the side.
 
@@ -7,7 +7,7 @@ PRs are grouped into stacks (git-spice / branch base), sorted by Linear priority
 ## Quick start
 
 ```sh
-git clone <repo-url> && cd pr-dashboard
+git clone git@github.com:northvik/daily-dashboard.git && cd daily-dashboard
 cp .env.example .env
 # edit .env — at minimum set GITHUB_TOKEN and GITHUB_USERNAME
 

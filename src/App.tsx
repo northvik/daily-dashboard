@@ -453,7 +453,7 @@ export default function App() {
   return (
     <>
       <div className="header">
-        <h1>PR Dashboard</h1>
+        <h1>Daily Dashboard</h1>
         <div className="header-meta">
           {data && <span>Updated {data.fetchedAt.toLocaleTimeString()}</span>}
           <button className="refresh-btn" onClick={refresh} disabled={loading}>
