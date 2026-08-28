@@ -1,88 +1,88 @@
 export type PRStatus =
-  | "ready"
-  | "rebase"
-  | "ci-fail"
-  | "review"
-  | "changes-requested"
-  | "approved"
-  | "commented"
-  | "draft";
+  | 'ready'
+  | 'rebase'
+  | 'ci-fail'
+  | 'review'
+  | 'changes-requested'
+  | 'approved'
+  | 'commented'
+  | 'draft'
 
 export interface PR {
-  repo: string;
-  number: number;
-  title: string;
-  url: string;
-  ticket?: string;
-  ticketUrl?: string;
-  description: string;
-  base: string;
-  merged?: boolean;
-  status?: PRStatus;
-  depth: number;
+  repo: string
+  number: number
+  title: string
+  url: string
+  ticket?: string
+  ticketUrl?: string
+  description: string
+  base: string
+  merged?: boolean
+  status?: PRStatus
+  depth: number
 }
 
 export interface TicketInfo {
-  id: string;
-  title: string;
-  url: string;
-  status: string;
-  priority: string;
-  priorityOrder: number;
-  project?: string;
-  labels?: string[];
+  id: string
+  title: string
+  url: string
+  status: string
+  priority: string
+  priorityOrder: number
+  project?: string
+  labels?: string[]
 }
 
 export interface PRGroup {
-  name: string;
-  description: string;
-  prs: PR[];
-  ticket?: TicketInfo;
-  crossRepo?: boolean;
+  name: string
+  description: string
+  prs: PR[]
+  ticket?: TicketInfo
+  crossRepo?: boolean
 }
 
 export interface DashboardData {
-  groups: PRGroup[];
-  fetchedAt: Date;
+  groups: PRGroup[]
+  fetchedAt: Date
 }
 
 /* ── Daily standup ───────────────────────────────────────────────── */
 
-export type DailyBulletTone = "default" | "blocked" | "done";
+export type DailyBulletTone = 'default' | 'blocked' | 'done'
 
 export interface DailyBullet {
   /** Short action line: "merged credit flag", "waiting on review", "blocked by …" */
-  text: string;
-  tone?: DailyBulletTone;
+  text: string
+  tone?: DailyBulletTone
 }
 
 export interface DailyTag {
   /** Tiny label: merged / open / ticket id / repo */
-  label: string;
-  url?: string;
+  label: string
+  url?: string
 }
 
 /** One glanceable subject for standup notes */
 export interface DailySubject {
-  title: string;
+  title: string
   /** 0 = most important */
-  importance: number;
-  bullets: DailyBullet[];
-  tags?: DailyTag[];
+  importance: number
+  bullets: DailyBullet[]
+  tags?: DailyTag[]
 }
 
 export interface DailyAlert {
-  type: "missing-ticket" | "stale-pr" | "slack-gap";
-  message: string;
+  type: 'missing-ticket' | 'stale-pr' | 'slack-gap'
+  message: string
 }
 
 export interface DailyData {
-  date: string;
-  yesterday: DailySubject[];
-  today: DailySubject[];
-  alerts: DailyAlert[];
-  generatedAt: string;
-  generationCount: number;
+  date: string
+  yesterday: DailySubject[]
+  today: DailySubject[]
+  alerts: DailyAlert[]
+  generatedAt: string
+  generationCount: number
   /** Bump when standup JSON shape changes so clients can force one free regen */
-  formatVersion?: number;
+  formatVersion?: number
 }

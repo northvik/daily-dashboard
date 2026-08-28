@@ -1,4 +1,4 @@
-import type { DashboardData, DailyData } from "./types";
+import type { DashboardData, DailyData } from './types'
 
 /**
  * Fetch dashboard data from the server-side API.
@@ -7,15 +7,15 @@ import type { DashboardData, DailyData } from "./types";
 export async function fetchDashboard(
   signal?: AbortSignal,
 ): Promise<DashboardData> {
-  const res = await fetch("/api/dashboard", { signal });
+  const res = await fetch('/api/dashboard', { signal })
 
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Dashboard API ${res.status}: ${body}`);
+    const body = await res.text().catch(() => '')
+    throw new Error(`Dashboard API ${res.status}: ${body}`)
   }
 
-  const json = await res.json();
-  return { ...json, fetchedAt: new Date(json.fetchedAt) };
+  const json = await res.json()
+  return { ...json, fetchedAt: new Date(json.fetchedAt) }
 }
 
 /**
@@ -25,21 +25,21 @@ export async function fetchDashboard(
 export async function fetchDaily(
   signal?: AbortSignal,
 ): Promise<DailyData | null> {
-  const res = await fetch("/api/daily", { signal });
-  if (!res.ok) return null;
-  const json = await res.json();
-  if (json.status === "not-ready") return null;
-  return json as DailyData;
+  const res = await fetch('/api/daily', { signal })
+  if (!res.ok) return null
+  const json = await res.json()
+  if (json.status === 'not-ready') return null
+  return json as DailyData
 }
 
 /**
  * Force regenerate today's daily.
  */
 export async function refreshDaily(): Promise<DailyData> {
-  const res = await fetch("/api/daily/refresh", { method: "POST" });
+  const res = await fetch('/api/daily/refresh', { method: 'POST' })
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Daily refresh ${res.status}: ${body}`);
+    const body = await res.text().catch(() => '')
+    throw new Error(`Daily refresh ${res.status}: ${body}`)
   }
-  return res.json() as Promise<DailyData>;
+  return res.json() as Promise<DailyData>
 }

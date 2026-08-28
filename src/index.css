@@ -17,8 +17,9 @@
   --red-bg: rgba(248, 81, 73, 0.12);
   --orange-bg: rgba(210, 153, 34, 0.12);
   --rail: #30363d;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --font:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
 }
 
 @media (prefers-color-scheme: light) {
@@ -44,7 +45,11 @@
   }
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 body {
   font-family: var(--font);
@@ -134,8 +139,14 @@ body {
   font-family: var(--font);
   transition: border-color 0.15s;
 }
-.refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
-.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.refresh-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* ── Stats ────────────────────────────────────────────────────────── */
 
@@ -155,11 +166,26 @@ body {
   font-size: 12px;
   font-weight: 500;
 }
-.stat.green  { background: var(--green-bg);  color: var(--green); }
-.stat.orange { background: var(--orange-bg); color: var(--orange); }
-.stat.red    { background: var(--red-bg);    color: var(--red); }
-.stat.purple { background: var(--purple-bg); color: var(--purple); }
-.stat.blue   { background: var(--blue-bg);   color: var(--accent); }
+.stat.green {
+  background: var(--green-bg);
+  color: var(--green);
+}
+.stat.orange {
+  background: var(--orange-bg);
+  color: var(--orange);
+}
+.stat.red {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.stat.purple {
+  background: var(--purple-bg);
+  color: var(--purple);
+}
+.stat.blue {
+  background: var(--blue-bg);
+  color: var(--accent);
+}
 
 /* ── Stack card ───────────────────────────────────────────────────── */
 
@@ -204,7 +230,9 @@ body {
   white-space: nowrap;
   font-weight: 600;
 }
-.stack-ticket-id:hover { text-decoration: underline; }
+.stack-ticket-id:hover {
+  text-decoration: underline;
+}
 
 .stack-name {
   font-size: 13px;
@@ -232,7 +260,9 @@ body {
   white-space: nowrap;
 }
 
-.stack-body { padding: 8px 14px 8px 10px; }
+.stack-body {
+  padding: 8px 14px 8px 10px;
+}
 
 /* ── Tree view (CSS-only, based on iamkate.com/code/tree-views/) ──── */
 
@@ -290,8 +320,12 @@ body {
 }
 
 /* Merged items: purple dot */
-.tree li.merged::after { background: var(--purple); }
-.tree li.merged { border-left-color: color-mix(in srgb, var(--purple) 40%, transparent); }
+.tree li.merged::after {
+  background: var(--purple);
+}
+.tree li.merged {
+  border-left-color: color-mix(in srgb, var(--purple) 40%, transparent);
+}
 
 /* Collapsible summary */
 .tree summary {
@@ -300,9 +334,15 @@ body {
   user-select: none;
 }
 .tree summary::marker,
-.tree summary::-webkit-details-marker { display: none; }
-.tree summary:focus { outline: none; }
-.tree summary:focus-visible { outline: 1px dotted var(--text-muted); }
+.tree summary::-webkit-details-marker {
+  display: none;
+}
+.tree summary:focus {
+  outline: none;
+}
+.tree summary:focus-visible {
+  outline: 1px dotted var(--text-muted);
+}
 
 .tree summary::before {
   z-index: 1;
@@ -333,8 +373,14 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.pr-title-link:hover { color: var(--accent); text-decoration: underline; }
-.pr-title-link.merged { color: var(--purple); opacity: 0.75; }
+.pr-title-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.pr-title-link.merged {
+  color: var(--purple);
+  opacity: 0.75;
+}
 
 .pr-meta {
   font-size: 11px;
@@ -349,7 +395,9 @@ body {
   text-decoration: none;
   white-space: nowrap;
 }
-.pr-ticket-link:hover { text-decoration: underline; }
+.pr-ticket-link:hover {
+  text-decoration: underline;
+}
 
 /* ── Status icon ──────────────────────────────────────────────────── */
 
@@ -358,16 +406,36 @@ body {
   height: 14px;
   flex-shrink: 0;
 }
-.status-icon.ready   { color: var(--green); }
-.status-icon.rebase  { color: var(--orange); }
-.status-icon.ci-fail { color: var(--red); }
-.status-icon.ci-running { color: var(--accent); }
-.status-icon.review  { color: var(--text-muted); }
-.status-icon.draft   { color: var(--text-muted); }
-.status-icon.merged  { color: var(--purple); }
-.status-icon.approved { color: var(--green); }
-.status-icon.changes-requested { color: var(--red); }
-.status-icon.commented { color: var(--accent); }
+.status-icon.ready {
+  color: var(--green);
+}
+.status-icon.rebase {
+  color: var(--orange);
+}
+.status-icon.ci-fail {
+  color: var(--red);
+}
+.status-icon.ci-running {
+  color: var(--accent);
+}
+.status-icon.review {
+  color: var(--text-muted);
+}
+.status-icon.draft {
+  color: var(--text-muted);
+}
+.status-icon.merged {
+  color: var(--purple);
+}
+.status-icon.approved {
+  color: var(--green);
+}
+.status-icon.changes-requested {
+  color: var(--red);
+}
+.status-icon.commented {
+  color: var(--accent);
+}
 
 /* ── Ticket metadata (inline in headers) ──────────────────────────── */
 
@@ -377,10 +445,22 @@ body {
   border-radius: 10px;
   white-space: nowrap;
 }
-.ticket-priority.urgent { background: var(--red-bg); color: var(--red); }
-.ticket-priority.high   { background: var(--orange-bg); color: var(--orange); }
-.ticket-priority.medium { background: var(--blue-bg); color: var(--accent); }
-.ticket-priority.low    { background: var(--green-bg); color: var(--green); }
+.ticket-priority.urgent {
+  background: var(--red-bg);
+  color: var(--red);
+}
+.ticket-priority.high {
+  background: var(--orange-bg);
+  color: var(--orange);
+}
+.ticket-priority.medium {
+  background: var(--blue-bg);
+  color: var(--accent);
+}
+.ticket-priority.low {
+  background: var(--green-bg);
+  color: var(--green);
+}
 
 .ticket-label {
   font-size: 10px;
@@ -435,7 +515,9 @@ body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .spinner {
   animation: spin 1s linear infinite;
@@ -517,8 +599,12 @@ body {
   padding: 2px 0;
 }
 .daily-alert-inline.missing-ticket,
-.daily-alert-inline.stale-pr { color: var(--orange); }
-.daily-alert-inline.slack-gap { color: var(--accent); }
+.daily-alert-inline.stale-pr {
+  color: var(--orange);
+}
+.daily-alert-inline.slack-gap {
+  color: var(--accent);
+}
 
 /* Notebook subjects — sparse */
 .daily-subjects {
@@ -553,7 +639,7 @@ body {
 }
 
 .daily-subject-bullet::before {
-  content: "–";
+  content: '–';
   position: absolute;
   left: 0;
   color: var(--text-muted);

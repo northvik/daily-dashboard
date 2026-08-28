@@ -19,20 +19,22 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ### Environment variables
 
-| Variable | Required | Description | Where to get it |
-|----------|----------|-------------|-----------------|
-| `GITHUB_TOKEN` | yes | PAT with access to your repos / PRs (`repo` or fine-grained PR read) | GitHub → **Settings** → **Developer settings** → **[Personal access tokens](https://github.com/settings/tokens)** → generate (classic or fine-grained) |
-| `GITHUB_USERNAME` | yes | Your GitHub login (`author:` search filter) | GitHub avatar → profile URL, e.g. `https://github.com/**you**` |
-| `GITHUB_ORG` | no | Fallback org for merged ancestor PR lookups | Org slug from GitHub URLs, e.g. `https://github.com/**my-org**/…` |
-| `LINEAR_API_KEY` | no | Personal API key — tickets, priority, status | Linear → **Settings** → **Account** → **[Security & access](https://linear.app/settings/account/security)** → **Personal API keys** → Create key |
-| `LINEAR_TEAM` | no | Team key filter (e.g. `ENG`) | Linear team URL or settings — short key next to the team name (often 2–4 letters) |
-| `LINEAR_WORKSPACE` | no | Workspace slug for ticket links | From any issue URL: `https://linear.app/**workspace**/issue/…` |
-| `CURSOR_API_KEY` | no | Cursor SDK — AI stack summaries + daily brief | Cursor → **[Dashboard → Integrations](https://cursor.com/dashboard/integrations)** → create / copy API key |
-| `SLACK_USER_ID` | no | Your Slack member id (daily Slack search via Cursor MCP) | Slack → profile → **⋯** → **Copy member ID** (looks like `U08ABCDEF`) |
+| Variable           | Required | Description                                                          | Where to get it                                                                                                                                        |
+| ------------------ | -------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GITHUB_TOKEN`     | yes      | PAT with access to your repos / PRs (`repo` or fine-grained PR read) | GitHub → **Settings** → **Developer settings** → **[Personal access tokens](https://github.com/settings/tokens)** → generate (classic or fine-grained) |
+| `GITHUB_USERNAME`  | yes      | Your GitHub login (`author:` search filter)                          | GitHub avatar → profile URL, e.g. `https://github.com/**you**`                                                                                         |
+| `GITHUB_ORG`       | no       | Fallback org for merged ancestor PR lookups                          | Org slug from GitHub URLs, e.g. `https://github.com/**my-org**/…`                                                                                      |
+| `LINEAR_API_KEY`   | no       | Personal API key — tickets, priority, status                         | Linear → **Settings** → **Account** → **[Security & access](https://linear.app/settings/account/security)** → **Personal API keys** → Create key       |
+| `LINEAR_TEAM`      | no       | Team key filter (e.g. `ENG`)                                         | Linear team URL or settings — short key next to the team name (often 2–4 letters)                                                                      |
+| `LINEAR_WORKSPACE` | no       | Workspace slug for ticket links                                      | From any issue URL: `https://linear.app/**workspace**/issue/…`                                                                                         |
+| `CURSOR_API_KEY`   | no       | Cursor SDK — AI stack summaries + daily brief                        | Cursor → **[Dashboard → Integrations](https://cursor.com/dashboard/integrations)** → create / copy API key                                             |
+| `SLACK_USER_ID`    | no       | Your Slack member id (daily Slack search via Cursor MCP)             | Slack → profile → **⋯** → **Copy member ID** (looks like `U08ABCDEF`)                                                                                  |
 
 On startup the server prints which vars are set (`✓` / `–`).
 
 No Slack **app** install is required for Daily: sign into the Slack MCP inside Cursor once, set `SLACK_USER_ID`, and the agent reuses that session.
+
+Daily runs Slack through the **Cursor SDK** (a headless local agent with `settingSources: plugins,user`), not through this IDE chat. Having Slack MCP green in Cursor chat does not by itself prove the Daily agent can see those tools — check the Vite log line `[daily] Slack tools on agent:` after a refresh.
 
 ## What you get
 
@@ -67,8 +69,10 @@ data/       Local caches (gitignored)
 
 ## Scripts
 
-| Command | Purpose |
-|---------|---------|
-| `npm run dev` | Start UI + APIs |
-| `npm run build` | Typecheck + production client build (APIs won’t be present) |
-| `npm run lint` | oxlint |
+| Command                | Purpose                                                     |
+| ---------------------- | ----------------------------------------------------------- |
+| `npm run dev`          | Start UI + APIs                                             |
+| `npm run build`        | Typecheck + production client build (APIs won’t be present) |
+| `npm run lint`         | ESLint                                                      |
+| `npm run format`       | Prettier (write)                                            |
+| `npm run format:check` | Prettier (check)                                            |
