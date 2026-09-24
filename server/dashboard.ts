@@ -216,5 +216,34 @@ export async function fetchDashboard() {
 
   const orphanTickets = attachTicketsAndSort(groups, linearIssues)
 
+  // Link Cursor agent conversations to groups (local SQLite, zero tokens)
+  try {
+    const { findConversationsForGroups } = await import('./conversations.ts')
+    const inputs = groups.map((g) => {
+      const ticketIds = [
+        g.ticket?.id,
+        ...g.prs.map((p) => p.ticket).filter(Boolean),
+      ].filter((t): t is string => Boolean(t))
+      const prNumbers = g.prs.map((p) => p.number)
+      const branchNames = g.prs
+        .map((p) => headRefs.get(`${p.repo}#${p.number}`))
+        .filter((b): b is string => Boolean(b))
+      return {
+        key: g.ticket?.id ?? `${g.name}-${g.prs[0]?.number}`,
+        ticketIds: [...new Set(ticketIds)],
+        prNumbers,
+        branchNames,
+      }
+    })
+    const convMap = findConversationsForGroups(inputs)
+    for (let i = 0; i < groups.length; i++) {
+      const key = inputs[i].key
+      const refs = convMap.get(key)
+      if (refs?.length) groups[i].conversations = refs
+    }
+  } catch (err) {
+    console.warn('[dashboard] Conversation lookup skipped:', err)
+  }
+
   return { groups, orphanTickets, fetchedAt: new Date().toISOString() }
 }

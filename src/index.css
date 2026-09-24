@@ -373,6 +373,59 @@ body {
   white-space: nowrap;
 }
 
+/* ── Conversation chips ──────────────────────────────────────────── */
+
+.conv-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  min-height: 0;
+}
+
+.conv-icon {
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.conv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-family: var(--font);
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  max-width: 220px;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.conv-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.conv-chip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conv-chip-date {
+  flex-shrink: 0;
+  opacity: 0.6;
+  font-size: 9px;
+}
+
 .stack-body {
   padding: 8px 14px 8px 10px;
 }

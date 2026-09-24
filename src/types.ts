@@ -35,12 +35,19 @@ export interface TicketInfo {
   labels?: string[]
 }
 
+export interface ConversationRef {
+  id: string
+  title: string
+  updatedAt: string
+}
+
 export interface PRGroup {
   name: string
   description: string
   prs: PR[]
   ticket?: TicketInfo
   crossRepo?: boolean
+  conversations?: ConversationRef[]
 }
 
 export interface DashboardData {

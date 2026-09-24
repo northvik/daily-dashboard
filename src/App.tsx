@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchDashboard, fetchDaily, refreshDaily } from './api'
 import type {
+  ConversationRef,
   DashboardData,
   DailyData,
   DailySubject,
@@ -275,6 +276,40 @@ function TreeNodeView({ node }: { node: TreeNode }) {
   )
 }
 
+/* ── Conversation refs ────────────────────────────────────────────── */
+
+function relativeDate(iso: string): string {
+  const ms = Date.now() - Date.parse(iso)
+  const mins = Math.floor(ms / 60_000)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
+}
+
+function ConversationList({ refs }: { refs: ConversationRef[] }) {
+  if (refs.length === 0) return null
+  return (
+    <div className="conv-row">
+      <span className="conv-icon" title="Cursor conversations">
+        💬
+      </span>
+      {refs.map((c) => (
+        <button
+          key={c.id}
+          className="conv-chip"
+          title={`Click to copy title — search in Cursor sidebar\n${c.title}`}
+          onClick={() => void navigator.clipboard.writeText(c.title)}
+        >
+          <span className="conv-chip-title">{c.title}</span>
+          <span className="conv-chip-date">{relativeDate(c.updatedAt)}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /* ── Group card ──────────────────────────────────────────────────── */
 
 function GroupCard({ group }: { group: PRGroup }) {
@@ -284,6 +319,7 @@ function GroupCard({ group }: { group: PRGroup }) {
   const openPRs = group.prs.filter((p) => !p.merged)
   const ticketId = ticket?.id ?? group.prs.find((p) => p.ticket)?.ticket
   const ticketUrl = ticket?.url ?? group.prs.find((p) => p.ticketUrl)?.ticketUrl
+  const conversations = group.conversations ?? []
 
   return (
     <div className="stack-card">
@@ -324,6 +360,7 @@ function GroupCard({ group }: { group: PRGroup }) {
       {group.description && (
         <div className="stack-desc-row">{group.description}</div>
       )}
+      {conversations.length > 0 && <ConversationList refs={conversations} />}
       {tree.length > 0 && (
         <div className="stack-body">
           <ul className="tree">
@@ -578,7 +615,9 @@ function OrphanTicketsPanel({ tickets }: { tickets: TicketInfo[] }) {
                 {t.id}
               </a>
               <span className="orphan-title">{t.title}</span>
-              <span className={`ticket-priority ${priClass}`}>{t.priority}</span>
+              <span className={`ticket-priority ${priClass}`}>
+                {t.priority}
+              </span>
               <span className="ticket-status">{t.status}</span>
             </li>
           )
@@ -704,9 +743,7 @@ export default function App() {
         </div>
         <div className="dashboard-side">
           <DailyPanel />
-          {data && (
-            <OrphanTicketsPanel tickets={data.orphanTickets ?? []} />
-          )}
+          {data && <OrphanTicketsPanel tickets={data.orphanTickets ?? []} />}
         </div>
       </div>
     </>

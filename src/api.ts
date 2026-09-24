@@ -15,7 +15,11 @@ export async function fetchDashboard(
   }
 
   const json = await res.json()
-  return { ...json, orphanTickets: json.orphanTickets ?? [], fetchedAt: new Date(json.fetchedAt) }
+  return {
+    ...json,
+    orphanTickets: json.orphanTickets ?? [],
+    fetchedAt: new Date(json.fetchedAt),
+  }
 }
 
 /**

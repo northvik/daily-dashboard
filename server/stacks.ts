@@ -45,12 +45,19 @@ export interface TicketInfo {
   labels?: string[]
 }
 
+export interface ConversationRef {
+  id: string
+  title: string
+  updatedAt: string
+}
+
 export interface PRGroup {
   name: string
   description: string
   prs: PR[]
   ticket?: TicketInfo
   crossRepo?: boolean
+  conversations?: ConversationRef[]
 }
 
 /* ── Constants ───────────────────────────────────────────────────── */
@@ -316,9 +323,7 @@ export interface LinearTicketInput {
 /** Freshest open PR activity in the group (ms), or 0 if unknown. */
 export function groupFreshnessMs(group: PRGroup): number {
   const open = group.prs.filter((p) => !p.merged && p.updatedAt)
-  const pool = open.length
-    ? open
-    : group.prs.filter((p) => p.updatedAt)
+  const pool = open.length ? open : group.prs.filter((p) => p.updatedAt)
   let max = 0
   for (const p of pool) {
     const t = Date.parse(p.updatedAt!)
