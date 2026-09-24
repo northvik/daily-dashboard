@@ -8,11 +8,39 @@ import type {
   PR,
   PRGroup,
   PRStatus,
+  TicketInfo,
 } from './types'
 import './index.css'
 
 const REFRESH_MS = 60_000
 const DAILY_FORMAT_VERSION = 3
+const ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000
+
+function groupFreshnessMs(group: PRGroup): number {
+  const open = group.prs.filter((p) => !p.merged && p.updatedAt)
+  const pool = open.length ? open : group.prs.filter((p) => p.updatedAt)
+  let max = 0
+  for (const p of pool) {
+    const t = Date.parse(p.updatedAt!)
+    if (!Number.isNaN(t) && t > max) max = t
+  }
+  return max
+}
+
+function splitByAge(groups: PRGroup[]): {
+  active: PRGroup[]
+  archived: PRGroup[]
+} {
+  const cutoff = Date.now() - ARCHIVE_AFTER_MS
+  const active: PRGroup[] = []
+  const archived: PRGroup[] = []
+  for (const g of groups) {
+    const fresh = groupFreshnessMs(g)
+    if (fresh > 0 && fresh < cutoff) archived.push(g)
+    else active.push(g)
+  }
+  return { active, archived }
+}
 
 /* ── Icons ───────────────────────────────────────────────────────── */
 
@@ -528,6 +556,70 @@ function DailyPanel() {
   )
 }
 
+function OrphanTicketsPanel({ tickets }: { tickets: TicketInfo[] }) {
+  if (tickets.length === 0) return null
+  return (
+    <aside className="orphan-panel">
+      <div className="orphan-header">
+        <h2>Tickets without PRs</h2>
+        <span className="orphan-count">{tickets.length}</span>
+      </div>
+      <ul className="orphan-list">
+        {tickets.map((t) => {
+          const priClass = t.priority.toLowerCase().replace(/\s+/g, '')
+          return (
+            <li key={t.id} className="orphan-item">
+              <a
+                href={t.url}
+                target="_blank"
+                rel="noopener"
+                className="orphan-id"
+              >
+                {t.id}
+              </a>
+              <span className="orphan-title">{t.title}</span>
+              <span className={`ticket-priority ${priClass}`}>{t.priority}</span>
+              <span className="ticket-status">{t.status}</span>
+            </li>
+          )
+        })}
+      </ul>
+    </aside>
+  )
+}
+
+function GroupList({ groups }: { groups: PRGroup[] }) {
+  const { active, archived } = splitByAge(groups)
+  return (
+    <div className="group-list">
+      {active.map((g) => (
+        <GroupCard
+          key={g.ticket?.id ?? `${g.name}-${g.prs[0]?.number}`}
+          group={g}
+        />
+      ))}
+      {archived.length > 0 && (
+        <details className="archive-section">
+          <summary>
+            Archived
+            <span className="archive-count">
+              {archived.length} · older than a week
+            </span>
+          </summary>
+          <div className="archive-list">
+            {archived.map((g) => (
+              <GroupCard
+                key={g.ticket?.id ?? `${g.name}-${g.prs[0]?.number}`}
+                group={g}
+              />
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  )
+}
+
 /* ── App ─────────────────────────────────────────────────────────── */
 
 export default function App() {
@@ -568,7 +660,7 @@ export default function App() {
   const readyCount = openPRs.filter((p) => p.status === 'ready').length
   const rebaseCount = openPRs.filter((p) => p.status === 'rebase').length
   const ciFailCount = openPRs.filter((p) => p.status === 'ci-fail').length
-  const ticketCount = data?.groups.filter((g) => g.ticket).length ?? 0
+  const orphanCount = data?.orphanTickets?.length ?? 0
 
   return (
     <>
@@ -595,8 +687,8 @@ export default function App() {
         {ciFailCount > 0 && (
           <span className="stat red">✕ {ciFailCount} CI failing</span>
         )}
-        {ticketCount > 0 && (
-          <span className="stat purple">{ticketCount} Tickets</span>
+        {orphanCount > 0 && (
+          <span className="stat purple">{orphanCount} Without PRs</span>
         )}
       </div>
 
@@ -608,18 +700,14 @@ export default function App() {
 
       <div className="dashboard-layout">
         <div className="dashboard-main">
+          {data && <GroupList groups={data.groups} />}
+        </div>
+        <div className="dashboard-side">
+          <DailyPanel />
           {data && (
-            <div className="group-list">
-              {data.groups.map((g) => (
-                <GroupCard
-                  key={g.ticket?.id ?? `${g.name}-${g.prs[0]?.number}`}
-                  group={g}
-                />
-              ))}
-            </div>
+            <OrphanTicketsPanel tickets={data.orphanTickets ?? []} />
           )}
         </div>
-        <DailyPanel />
       </div>
     </>
   )

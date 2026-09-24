@@ -14,6 +14,8 @@ export interface GHSearchItem {
   body: string
   draft: boolean
   repository_url: string
+  /** ISO timestamp — last issue/PR activity (push, comment, etc.) */
+  updated_at: string
 }
 
 export interface GHPRDetail {
@@ -25,6 +27,7 @@ export interface GHPRDetail {
   mergeable: boolean | null
   draft: boolean
   merged_at: string | null
+  updated_at?: string
   base: { ref: string }
   head: { ref: string }
 }

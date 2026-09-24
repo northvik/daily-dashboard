@@ -94,6 +94,7 @@ export async function fetchDashboard() {
           ? 'draft'
           : 'review',
       depth: 0,
+      updatedAt: item.updated_at || detail?.updated_at,
     }
   })
 
@@ -142,6 +143,7 @@ export async function fetchDashboard() {
           merged: true,
           status: undefined,
           depth: 0,
+          updatedAt: detail.updated_at ?? detail.merged_at ?? undefined,
         } satisfies PR,
       }
     }),
@@ -212,7 +214,7 @@ export async function fetchDashboard() {
     }
   }
 
-  attachTicketsAndSort(groups, linearIssues)
+  const orphanTickets = attachTicketsAndSort(groups, linearIssues)
 
-  return { groups, fetchedAt: new Date().toISOString() }
+  return { groups, orphanTickets, fetchedAt: new Date().toISOString() }
 }

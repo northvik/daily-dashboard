@@ -20,6 +20,8 @@ export interface PR {
   merged?: boolean
   status?: PRStatus
   depth: number
+  /** ISO timestamp — last PR activity */
+  updatedAt?: string
 }
 
 export interface TicketInfo {
@@ -43,6 +45,8 @@ export interface PRGroup {
 
 export interface DashboardData {
   groups: PRGroup[]
+  /** Linear tickets in progress with no linked open PR */
+  orphanTickets: TicketInfo[]
   fetchedAt: Date
 }
 

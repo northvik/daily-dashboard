@@ -30,6 +30,8 @@ export interface PR {
   merged?: boolean
   status?: PRStatus
   depth: number
+  /** ISO timestamp — freshest open-PR activity drives group order */
+  updatedAt?: string
 }
 
 export interface TicketInfo {
@@ -311,10 +313,28 @@ export interface LinearTicketInput {
   labels: { nodes: { name: string }[] }
 }
 
+/** Freshest open PR activity in the group (ms), or 0 if unknown. */
+export function groupFreshnessMs(group: PRGroup): number {
+  const open = group.prs.filter((p) => !p.merged && p.updatedAt)
+  const pool = open.length
+    ? open
+    : group.prs.filter((p) => p.updatedAt)
+  let max = 0
+  for (const p of pool) {
+    const t = Date.parse(p.updatedAt!)
+    if (!Number.isNaN(t) && t > max) max = t
+  }
+  return max
+}
+
+/**
+ * Attach Linear ticket info to PR groups. Tickets with no PRs are returned
+ * separately (not mixed into the stacks list). Groups sort by PR freshness.
+ */
 export function attachTicketsAndSort(
   groups: PRGroup[],
   linearIssues: LinearTicketInput[],
-): void {
+): TicketInfo[] {
   const ticketMap = new Map<string, TicketInfo>()
   for (const issue of linearIssues) {
     ticketMap.set(issue.identifier, {
@@ -338,17 +358,23 @@ export function attachTicketsAndSort(
     }
   }
 
-  // Linear tickets with no PRs → empty groups
+  const orphans: TicketInfo[] = []
   for (const [id, info] of ticketMap) {
-    if (!linkedTickets.has(id)) {
-      groups.push({ name: info.title, description: '', prs: [], ticket: info })
-    }
+    if (!linkedTickets.has(id)) orphans.push(info)
   }
+  orphans.sort(
+    (a, b) =>
+      a.priorityOrder - b.priorityOrder || a.title.localeCompare(b.title),
+  )
 
-  // Sort: priority first, then name
   groups.sort((a, b) => {
+    const fa = groupFreshnessMs(a)
+    const fb = groupFreshnessMs(b)
+    if (fa !== fb) return fb - fa
     const pa = a.ticket?.priorityOrder ?? 4
     const pb = b.ticket?.priorityOrder ?? 4
     return pa !== pb ? pa - pb : a.name.localeCompare(b.name)
   })
+
+  return orphans
 }
