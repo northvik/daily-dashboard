@@ -57,9 +57,10 @@ interface RawRow {
 }
 
 /**
- * Find conversations that mention any of the given terms (ticket IDs,
- * PR numbers) in their indexed body text, or whose branch column
- * contains a matching ticket slug.
+ * Two-tier search. Strong signals: ticket IDs in body (phrase), ticket
+ * slugs in branch names, exact head-ref branch matches. Weak signal: bare
+ * PR numbers in body — only used when strong signals find nothing, since
+ * a number like "1920" matches years and unrelated ids.
  */
 function search(
   ticketIds: string[],
@@ -93,27 +94,7 @@ function search(
     }
   }
 
-  // 2. FTS body search for PR numbers (plain number tokens)
-  for (const num of prNumbers) {
-    try {
-      const rows = conn
-        .prepare(
-          `SELECT c.id, c.title, c.updated_at
-           FROM conversations c
-           WHERE c.fts_rowid IN (
-             SELECT rowid FROM conversation_fts WHERE body MATCH ?
-           )
-           ORDER BY c.updated_at DESC
-           LIMIT 10`,
-        )
-        .all(String(num)) as RawRow[]
-      for (const r of rows) push(r)
-    } catch {
-      /* skip */
-    }
-  }
-
-  // 3. Branch name LIKE for ticket slugs
+  // 2. Branch name LIKE for ticket slugs
   for (const tid of ticketIds) {
     if (!tid) continue
     const slug = tid.toLowerCase()
@@ -133,7 +114,7 @@ function search(
     }
   }
 
-  // 4. Branch name exact match for known head refs
+  // 3. Branch name exact match for known head refs
   for (const branch of branchNames) {
     if (!branch) continue
     try {
@@ -149,6 +130,28 @@ function search(
       for (const r of rows) push(r)
     } catch {
       /* skip */
+    }
+  }
+
+  // 4. Weak fallback: bare PR numbers, only when nothing strong matched
+  if (results.length === 0) {
+    for (const num of prNumbers) {
+      try {
+        const rows = conn
+          .prepare(
+            `SELECT c.id, c.title, c.updated_at
+             FROM conversations c
+             WHERE c.fts_rowid IN (
+               SELECT rowid FROM conversation_fts WHERE body MATCH ?
+             )
+             ORDER BY c.updated_at DESC
+             LIMIT 10`,
+          )
+          .all(String(num)) as RawRow[]
+        for (const r of rows) push(r)
+      } catch {
+        /* skip */
+      }
     }
   }
 
