@@ -119,12 +119,21 @@ export interface UsageModel {
   outputTokens: number
 }
 
+export interface UsageRequestEvent {
+  ts: number
+  model: string
+  cents: number
+  inputTokens: number
+  outputTokens: number
+}
+
 export interface UsageConversation {
   id: string
   title: string
   costCents: number
-  requests: number
+  requestCount: number
   lastEventAt: number
+  events: UsageRequestEvent[]
 }
 
 export interface UsageData {

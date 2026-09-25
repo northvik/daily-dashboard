@@ -319,9 +319,7 @@ function ConversationList({
             onClick={() => void navigator.clipboard.writeText(c.title)}
           >
             <span className="conv-chip-title">{c.title}</span>
-            {scaled && (
-              <span className="conv-chip-cost">· {scaled}</span>
-            )}
+            {scaled && <span className="conv-chip-cost">· {scaled}</span>}
             <span className="conv-chip-date">{relativeDate(c.updatedAt)}</span>
           </button>
         )
@@ -659,13 +657,18 @@ function OrphanTicketsPanel({ tickets }: { tickets: TicketInfo[] }) {
 
 function UsageStrip({ usage }: { usage: UsageData | null }) {
   if (!usage) return null
-  const { cycle } = usage
+  const { cycle, models } = usage
   const included = formatCents(cycle.includedCents)
   const bonus = formatCents(cycle.bonusCents)
   const onDemand = formatCents(cycle.onDemandCents)
   const total = formatCents(
     cycle.includedCents + cycle.bonusCents + cycle.onDemandCents,
   )
+  const totalTokens = models.reduce(
+    (s, m) => s + m.inputTokens + m.outputTokens,
+    0,
+  )
+  const tokLabel = formatTokens(totalTokens)
   const resetDate = new Date(cycle.endMs).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -674,7 +677,7 @@ function UsageStrip({ usage }: { usage: UsageData | null }) {
     <div className="usage-strip">
       <span className="usage-strip-breakdown">
         {included} included + {bonus} bonus + {onDemand} on-demand ={' '}
-        <strong>{total}</strong>
+        <strong>{total}</strong> · {tokLabel} tokens
       </span>
       <span className="usage-strip-reset">resets {resetDate}</span>
     </div>
@@ -732,34 +735,88 @@ function UsageModelsList({ usage }: { usage: UsageData }) {
   )
 }
 
+function formatTokens(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`
+  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}k`
+  return String(n)
+}
+
 function UsageConvsList({ usage }: { usage: UsageData }) {
   const scale = computeCostScale(usage)
   return (
     <div className="usage-panel-content usage-convos">
       <div className="usage-period">
         {usagePeriodLabel(usage.cycle)}
-        <span className="usage-legend">
-          raw → scaled to billed total
-        </span>
+        <span className="usage-legend">raw → scaled to billed total</span>
       </div>
-      <ul className="usage-conv-list">
+      <div className="usage-conv-list">
         {usage.conversations.map((c) => (
-          <li key={c.id} className="usage-conv-item">
-            <button
-              className="usage-conv-btn"
-              title="Copy title for Cursor sidebar search"
-              onClick={() => void navigator.clipboard.writeText(c.title)}
-            >
+          <details key={c.id} className="usage-conv-row">
+            <summary className="usage-conv-summary">
               <span className="usage-conv-title">{c.title}</span>
               <span className="usage-conv-meta">
                 <s className="cost-raw">{formatCents(c.costCents)}</s>{' '}
-                {formatCents(c.costCents * scale)} · {c.requests} req ·{' '}
+                {formatCents(c.costCents * scale)} ·{' '}
+                {formatTokens(
+                  c.events.reduce(
+                    (s, e) => s + e.inputTokens + e.outputTokens,
+                    0,
+                  ),
+                )}{' '}
+                · {c.requestCount} req ·{' '}
                 {relativeDate(new Date(c.lastEventAt).toISOString())}
               </span>
-            </button>
-          </li>
+              <button
+                className="usage-conv-copy"
+                title="Copy title"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  void navigator.clipboard.writeText(c.title)
+                }}
+              >
+                ⎘
+              </button>
+            </summary>
+            <table className="usage-ev-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Model</th>
+                  <th>Tokens</th>
+                  <th>Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {c.events
+                  .slice()
+                  .sort((a, b) => b.ts - a.ts)
+                  .map((ev, i) => (
+                    <tr key={i}>
+                      <td>
+                        {new Date(ev.ts).toLocaleDateString([], {
+                          month: 'short',
+                          day: 'numeric',
+                        })}{' '}
+                        {new Date(ev.ts).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </td>
+                      <td>{ev.model}</td>
+                      <td>{formatTokens(ev.inputTokens + ev.outputTokens)}</td>
+                      <td>
+                        <s className="cost-raw">{formatCents(ev.cents)}</s>{' '}
+                        {formatCents(ev.cents * scale)}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </details>
         ))}
-      </ul>
+      </div>
     </div>
   )
 }

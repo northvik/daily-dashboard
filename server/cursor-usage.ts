@@ -34,11 +34,20 @@ export interface ModelUsage {
   outputTokens: number
 }
 
+export interface RequestEvent {
+  ts: number
+  model: string
+  cents: number
+  inputTokens: number
+  outputTokens: number
+}
+
 export interface ConversationCost {
   id: string
   costCents: number
-  requests: number
+  requestCount: number
   lastEventAt: number
+  events: RequestEvent[]
 }
 
 export interface UsageSummary {
@@ -184,7 +193,12 @@ async function buildUsageSummary(): Promise<UsageSummary> {
   >()
   const convMap = new Map<
     string,
-    { costCents: number; requests: number; lastEventAt: number }
+    {
+      costCents: number
+      requestCount: number
+      lastEventAt: number
+      events: RequestEvent[]
+    }
   >()
 
   for (const ev of events) {
@@ -211,13 +225,27 @@ async function buildUsageSummary(): Promise<UsageSummary> {
     if (!cid || cid === 'null' || cid.startsWith('agent-')) continue
     const ce = convMap.get(cid) ?? {
       costCents: 0,
-      requests: 0,
+      requestCount: 0,
       lastEventAt: 0,
+      events: [],
     }
     ce.costCents += ev.chargedCents ?? 0
-    ce.requests += 1
+    ce.requestCount += 1
     const ts = Number(ev.timestamp)
     if (ts > ce.lastEventAt) ce.lastEventAt = ts
+    const inTok = tok
+      ? (tok.inputTokens ?? 0) +
+        (tok.cacheWriteTokens ?? 0) +
+        (tok.cacheReadTokens ?? 0)
+      : 0
+    const outTok = tok?.outputTokens ?? 0
+    ce.events.push({
+      ts,
+      model,
+      cents: ev.chargedCents ?? 0,
+      inputTokens: inTok,
+      outputTokens: outTok,
+    })
     convMap.set(cid, ce)
   }
 

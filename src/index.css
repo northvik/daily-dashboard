@@ -451,7 +451,6 @@ body {
 }
 
 .usage-conv-list {
-  list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
@@ -459,26 +458,68 @@ body {
   gap: 2px;
 }
 
-.usage-conv-item {
-  display: block;
-}
-
-.usage-conv-btn {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 6px 8px;
+.usage-conv-row {
   border-radius: 6px;
-  cursor: pointer;
-  text-align: left;
-  font-family: var(--font);
   transition: background 0.1s;
 }
 
-.usage-conv-btn:hover {
+.usage-conv-row[open] {
   background: var(--bg);
+}
+
+.usage-conv-summary {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font);
+  transition: background 0.1s;
+  position: relative;
+}
+
+.usage-conv-summary::-webkit-details-marker {
+  display: none;
+}
+
+.usage-conv-summary::before {
+  content: '▸';
+  position: absolute;
+  right: 8px;
+  top: 7px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.usage-conv-row[open] > .usage-conv-summary::before {
+  content: '▾';
+}
+
+.usage-conv-summary:hover {
+  background: var(--bg);
+}
+
+.usage-conv-copy {
+  position: absolute;
+  right: 24px;
+  top: 5px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.usage-conv-summary:hover .usage-conv-copy {
+  opacity: 1;
+}
+
+.usage-conv-copy:hover {
+  color: var(--accent);
 }
 
 .usage-conv-title {
@@ -487,12 +528,39 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding-right: 40px;
 }
 
 .usage-conv-meta {
   font-size: 10px;
   color: var(--text-muted);
   font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.usage-ev-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  margin: 4px 0 8px;
+}
+
+.usage-ev-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.usage-ev-table td {
+  padding: 3px 8px;
+  color: var(--text);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  border-bottom: 1px solid var(--border);
+}
+
+.usage-ev-table tr:last-child td {
+  border-bottom: none;
 }
 
 /* ── Stack card ───────────────────────────────────────────────────── */
