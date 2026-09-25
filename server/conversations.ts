@@ -38,7 +38,9 @@ function db(): Database | null {
   if (_db) return _db
   try {
     const esmRequire = createRequire(import.meta.url)
-    const Database = esmRequire('better-sqlite3') as typeof import('better-sqlite3')
+    const Database = esmRequire(
+      'better-sqlite3',
+    ) as typeof import('better-sqlite3')
     _db = new Database(DB_PATH, { readonly: true, fileMustExist: true })
     _db.pragma('journal_mode = WAL')
     return _db
@@ -186,6 +188,19 @@ export function findConversationsForGroups(
   for (const input of inputs) {
     const refs = search(input.ticketIds, input.prNumbers, input.branchNames)
     if (refs.length > 0) result.set(input.key, refs)
+  }
+  return result
+}
+
+/** Batch look up conversation titles by ID. */
+export function getConversationTitles(ids: string[]): Map<string, string> {
+  const conn = db()
+  if (!conn || ids.length === 0) return new Map()
+  const result = new Map<string, string>()
+  const stmt = conn.prepare('SELECT id, title FROM conversations WHERE id = ?')
+  for (const id of ids) {
+    const row = stmt.get(id) as { id: string; title: string } | undefined
+    if (row) result.set(row.id, row.title)
   }
   return result
 }

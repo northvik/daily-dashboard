@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchDashboard, fetchDaily, refreshDaily } from './api'
+import { fetchDashboard, fetchDaily, fetchUsage, refreshDaily } from './api'
 import type {
   ConversationRef,
   DashboardData,
@@ -10,6 +10,7 @@ import type {
   PRGroup,
   PRStatus,
   TicketInfo,
+  UsageData,
 } from './types'
 import './index.css'
 
@@ -288,31 +289,56 @@ function relativeDate(iso: string): string {
   return `${days}d ago`
 }
 
-function ConversationList({ refs }: { refs: ConversationRef[] }) {
+function formatCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`
+}
+
+function ConversationList({
+  refs,
+  costScale,
+}: {
+  refs: ConversationRef[]
+  costScale: number
+}) {
   if (refs.length === 0) return null
   return (
     <div className="conv-row">
       <span className="conv-icon" title="Cursor conversations">
         💬
       </span>
-      {refs.map((c) => (
-        <button
-          key={c.id}
-          className="conv-chip"
-          title={`Click to copy title — search in Cursor sidebar\n${c.title}`}
-          onClick={() => void navigator.clipboard.writeText(c.title)}
-        >
-          <span className="conv-chip-title">{c.title}</span>
-          <span className="conv-chip-date">{relativeDate(c.updatedAt)}</span>
-        </button>
-      ))}
+      {refs.map((c) => {
+        const scaled =
+          c.costCents != null && c.costCents > 0
+            ? formatCents(c.costCents * costScale)
+            : null
+        return (
+          <button
+            key={c.id}
+            className="conv-chip"
+            title={`Click to copy title — search in Cursor sidebar\n${c.title}`}
+            onClick={() => void navigator.clipboard.writeText(c.title)}
+          >
+            <span className="conv-chip-title">{c.title}</span>
+            {scaled && (
+              <span className="conv-chip-cost">· {scaled}</span>
+            )}
+            <span className="conv-chip-date">{relativeDate(c.updatedAt)}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }
 
 /* ── Group card ──────────────────────────────────────────────────── */
 
-function GroupCard({ group }: { group: PRGroup }) {
+function GroupCard({
+  group,
+  costScale,
+}: {
+  group: PRGroup
+  costScale: number
+}) {
   const tree = group.prs.length > 0 ? buildTree(group.prs) : []
   const ticket = group.ticket
   const priClass = ticket?.priority.toLowerCase().replace(/\s+/g, '') ?? ''
@@ -360,7 +386,9 @@ function GroupCard({ group }: { group: PRGroup }) {
       {group.description && (
         <div className="stack-desc-row">{group.description}</div>
       )}
-      {conversations.length > 0 && <ConversationList refs={conversations} />}
+      {conversations.length > 0 && (
+        <ConversationList refs={conversations} costScale={costScale} />
+      )}
       {tree.length > 0 && (
         <div className="stack-body">
           <ul className="tree">
@@ -627,7 +655,182 @@ function OrphanTicketsPanel({ tickets }: { tickets: TicketInfo[] }) {
   )
 }
 
-function GroupList({ groups }: { groups: PRGroup[] }) {
+/* ── Usage strip + panel ──────────────────────────────────────────── */
+
+function UsageStrip({ usage }: { usage: UsageData | null }) {
+  if (!usage) return null
+  const { cycle } = usage
+  const included = formatCents(cycle.includedCents)
+  const bonus = formatCents(cycle.bonusCents)
+  const onDemand = formatCents(cycle.onDemandCents)
+  const total = formatCents(
+    cycle.includedCents + cycle.bonusCents + cycle.onDemandCents,
+  )
+  const resetDate = new Date(cycle.endMs).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  })
+  return (
+    <div className="usage-strip">
+      <span className="usage-strip-breakdown">
+        {included} included + {bonus} bonus + {onDemand} on-demand ={' '}
+        <strong>{total}</strong>
+      </span>
+      <span className="usage-strip-reset">resets {resetDate}</span>
+    </div>
+  )
+}
+
+function usagePeriodLabel(cycle: UsageData['cycle']): string {
+  const fmt = (ms: number) =>
+    new Date(ms).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    })
+  return `${fmt(cycle.startMs)} – ${fmt(cycle.endMs)}`
+}
+
+function computeCostScale(usage: UsageData): number {
+  const billed =
+    usage.cycle.includedCents +
+    usage.cycle.bonusCents +
+    usage.cycle.onDemandCents
+  const rawSum = usage.models.reduce((s, m) => s + m.cents, 0)
+  return rawSum > 0 ? billed / rawSum : 1
+}
+
+function UsageModelsList({ usage }: { usage: UsageData }) {
+  const scale = computeCostScale(usage)
+  return (
+    <div className="usage-panel-content">
+      <div className="usage-period">
+        {usagePeriodLabel(usage.cycle)}
+        <span className="usage-legend">
+          raw internal cost → scaled to billed total
+        </span>
+      </div>
+      <ul className="usage-model-list">
+        {usage.models.map((m) => {
+          const totalTok = m.inputTokens + m.outputTokens
+          const tokLabel =
+            totalTok >= 1e6
+              ? `${(totalTok / 1e6).toFixed(1)}M`
+              : `${(totalTok / 1e3).toFixed(0)}k`
+          return (
+            <li key={m.model} className="usage-model-item">
+              <span className="usage-model-name">{m.model}</span>
+              <span className="usage-model-tokens">{tokLabel}</span>
+              <span className="usage-model-cost">
+                <s className="cost-raw">{formatCents(m.cents)}</s>{' '}
+                {formatCents(m.cents * scale)}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+function UsageConvsList({ usage }: { usage: UsageData }) {
+  const scale = computeCostScale(usage)
+  return (
+    <div className="usage-panel-content usage-convos">
+      <div className="usage-period">
+        {usagePeriodLabel(usage.cycle)}
+        <span className="usage-legend">
+          raw → scaled to billed total
+        </span>
+      </div>
+      <ul className="usage-conv-list">
+        {usage.conversations.map((c) => (
+          <li key={c.id} className="usage-conv-item">
+            <button
+              className="usage-conv-btn"
+              title="Copy title for Cursor sidebar search"
+              onClick={() => void navigator.clipboard.writeText(c.title)}
+            >
+              <span className="usage-conv-title">{c.title}</span>
+              <span className="usage-conv-meta">
+                <s className="cost-raw">{formatCents(c.costCents)}</s>{' '}
+                {formatCents(c.costCents * scale)} · {c.requests} req ·{' '}
+                {relativeDate(new Date(c.lastEventAt).toISOString())}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+type SideTab = 'daily' | 'tickets' | 'models' | 'convs'
+
+function SidePanel({
+  tab,
+  setTab,
+  usage,
+  orphanTickets,
+}: {
+  tab: SideTab
+  setTab: (t: SideTab) => void
+  usage: UsageData | null
+  orphanTickets: TicketInfo[]
+}) {
+  const ticketCount = orphanTickets.length
+  return (
+    <>
+      <div className="side-tabs">
+        <button
+          className={`side-tab ${tab === 'daily' ? 'active' : ''}`}
+          onClick={() => setTab('daily')}
+        >
+          Daily
+        </button>
+        <button
+          className={`side-tab ${tab === 'tickets' ? 'active' : ''}`}
+          onClick={() => setTab('tickets')}
+        >
+          Tickets{ticketCount > 0 && ` (${ticketCount})`}
+        </button>
+        <button
+          className={`side-tab ${tab === 'models' ? 'active' : ''}`}
+          onClick={() => setTab('models')}
+        >
+          Usage by
+          <br />
+          models
+        </button>
+        <button
+          className={`side-tab ${tab === 'convs' ? 'active' : ''}`}
+          onClick={() => setTab('convs')}
+        >
+          Usage by
+          <br />
+          conversations
+        </button>
+      </div>
+      {tab === 'daily' && <DailyPanel />}
+      {tab === 'tickets' && <OrphanTicketsPanel tickets={orphanTickets} />}
+      {tab === 'models' && usage && <UsageModelsList usage={usage} />}
+      {tab === 'models' && !usage && (
+        <div className="daily-empty">Usage unavailable</div>
+      )}
+      {tab === 'convs' && usage && <UsageConvsList usage={usage} />}
+      {tab === 'convs' && !usage && (
+        <div className="daily-empty">Usage unavailable</div>
+      )}
+    </>
+  )
+}
+
+function GroupList({
+  groups,
+  costScale,
+}: {
+  groups: PRGroup[]
+  costScale: number
+}) {
   const { active, archived } = splitByAge(groups)
   return (
     <div className="group-list">
@@ -635,6 +838,7 @@ function GroupList({ groups }: { groups: PRGroup[] }) {
         <GroupCard
           key={g.ticket?.id ?? `${g.name}-${g.prs[0]?.number}`}
           group={g}
+          costScale={costScale}
         />
       ))}
       {archived.length > 0 && (
@@ -650,6 +854,7 @@ function GroupList({ groups }: { groups: PRGroup[] }) {
               <GroupCard
                 key={g.ticket?.id ?? `${g.name}-${g.prs[0]?.number}`}
                 group={g}
+                costScale={costScale}
               />
             ))}
           </div>
@@ -663,8 +868,10 @@ function GroupList({ groups }: { groups: PRGroup[] }) {
 
 export default function App() {
   const [data, setData] = useState<DashboardData | null>(null)
+  const [usage, setUsage] = useState<UsageData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [sideTab, setSideTab] = useState<SideTab>('daily')
   const abortRef = useRef<AbortController | null>(null)
 
   const refresh = useCallback(async () => {
@@ -675,8 +882,14 @@ export default function App() {
     try {
       setLoading(true)
       setError(null)
-      const d = await fetchDashboard(controller.signal)
-      if (!controller.signal.aborted) setData(d)
+      const [d, u] = await Promise.all([
+        fetchDashboard(controller.signal),
+        fetchUsage(controller.signal).catch(() => null),
+      ])
+      if (!controller.signal.aborted) {
+        setData(d)
+        setUsage(u)
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : String(err))
@@ -729,6 +942,7 @@ export default function App() {
         {orphanCount > 0 && (
           <span className="stat purple">{orphanCount} Without PRs</span>
         )}
+        <UsageStrip usage={usage} />
       </div>
 
       <Legend />
@@ -739,11 +953,20 @@ export default function App() {
 
       <div className="dashboard-layout">
         <div className="dashboard-main">
-          {data && <GroupList groups={data.groups} />}
+          {data && (
+            <GroupList
+              groups={data.groups}
+              costScale={usage ? computeCostScale(usage) : 1}
+            />
+          )}
         </div>
         <div className="dashboard-side">
-          <DailyPanel />
-          {data && <OrphanTicketsPanel tickets={data.orphanTickets ?? []} />}
+          <SidePanel
+            tab={sideTab}
+            setTab={setSideTab}
+            usage={usage}
+            orphanTickets={data?.orphanTickets ?? []}
+          />
         </div>
       </div>
     </>

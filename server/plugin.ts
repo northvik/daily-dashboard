@@ -77,6 +77,34 @@ export function dashboardPlugin(): Plugin {
           return
         }
 
+        if (url === '/api/usage' && req.method === 'GET') {
+          try {
+            const { fetchUsage } = await import('./cursor-usage.ts')
+            const { getConversationTitles } = await import('./conversations.ts')
+            const data = await fetchUsage()
+            if (!data) {
+              json(res, 200, { status: 'unavailable' })
+              return
+            }
+            const titleMap = getConversationTitles(
+              data.conversations.map((c) => c.id),
+            )
+            json(res, 200, {
+              cycle: data.cycle,
+              models: data.models,
+              conversations: data.conversations.map((c) => ({
+                ...c,
+                title: titleMap.get(c.id) ?? c.id,
+              })),
+              fetchedAt: data.fetchedAt,
+            })
+          } catch (err) {
+            console.error('[usage]', err)
+            json(res, 500, { error: String(err) })
+          }
+          return
+        }
+
         next()
       })
 

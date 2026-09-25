@@ -219,6 +219,7 @@ export async function fetchDashboard() {
   // Link Cursor agent conversations to groups (local SQLite, zero tokens)
   try {
     const { findConversationsForGroups } = await import('./conversations.ts')
+    const { getConversationCosts } = await import('./cursor-usage.ts')
     const inputs = groups.map((g) => {
       const ticketIds = [
         g.ticket?.id,
@@ -235,11 +236,19 @@ export async function fetchDashboard() {
         branchNames,
       }
     })
-    const convMap = findConversationsForGroups(inputs)
+    const [convMap, costMap] = await Promise.all([
+      findConversationsForGroups(inputs),
+      getConversationCosts().catch(() => new Map<string, number>()),
+    ])
     for (let i = 0; i < groups.length; i++) {
       const key = inputs[i].key
       const refs = convMap.get(key)
-      if (refs?.length) groups[i].conversations = refs
+      if (refs?.length) {
+        groups[i].conversations = refs.map((r) => ({
+          ...r,
+          costCents: costMap.get(r.id),
+        }))
+      }
     }
   } catch (err) {
     console.warn('[dashboard] Conversation lookup skipped:', err)

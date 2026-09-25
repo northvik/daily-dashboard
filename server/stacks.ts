@@ -49,6 +49,7 @@ export interface ConversationRef {
   id: string
   title: string
   updatedAt: string
+  costCents?: number
 }
 
 export interface PRGroup {

@@ -39,6 +39,7 @@ export interface ConversationRef {
   id: string
   title: string
   updatedAt: string
+  costCents?: number
 }
 
 export interface PRGroup {
@@ -96,4 +97,39 @@ export interface DailyData {
   generationCount: number
   /** Bump when standup JSON shape changes so clients can force one free regen */
   formatVersion?: number
+}
+
+/* ── Cursor usage ────────────────────────────────────────────────── */
+
+export interface UsageCycle {
+  startMs: number
+  endMs: number
+  includedCents: number
+  limitCents: number
+  bonusCents: number
+  percentUsed: number
+  onDemandCents: number
+  teamPoolCents: number
+}
+
+export interface UsageModel {
+  model: string
+  cents: number
+  inputTokens: number
+  outputTokens: number
+}
+
+export interface UsageConversation {
+  id: string
+  title: string
+  costCents: number
+  requests: number
+  lastEventAt: number
+}
+
+export interface UsageData {
+  cycle: UsageCycle
+  models: UsageModel[]
+  conversations: UsageConversation[]
+  fetchedAt: string
 }

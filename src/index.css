@@ -300,6 +300,201 @@ body {
   color: var(--accent);
 }
 
+/* ── Usage strip (inline in stats-row) ─────────────────────────────── */
+
+.usage-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.usage-strip-breakdown {
+  white-space: nowrap;
+}
+
+.usage-strip-breakdown strong {
+  color: var(--text-bright);
+}
+
+.usage-strip-reset {
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+/* ── Side tabs ────────────────────────────────────────────────────── */
+
+.side-tabs {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.side-tab {
+  flex: 1;
+  background: var(--bg-card);
+  border: none;
+  padding: 6px 4px;
+  font-family: var(--font);
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.side-tab:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.side-tab:hover {
+  color: var(--text);
+}
+
+.side-tab.active {
+  background: var(--bg);
+  color: var(--text-bright);
+}
+
+/* ── Usage panel ──────────────────────────────────────────────────── */
+
+.usage-panel-content {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  padding: 14px 16px 16px;
+}
+
+.usage-period {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.usage-legend {
+  font-size: 9px;
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.cost-raw {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.usage-panel-content h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-bright);
+  margin: 0 0 8px;
+  letter-spacing: 0.02em;
+}
+
+.usage-models {
+  margin-bottom: 0;
+}
+
+.usage-model-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.usage-model-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  font-size: 11px;
+  align-items: baseline;
+}
+
+.usage-model-name {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-model-tokens {
+  color: var(--text-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  text-align: right;
+  font-size: 10px;
+}
+
+.usage-model-cost {
+  color: var(--text-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  text-align: right;
+}
+
+.usage-convos {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.usage-conv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.usage-conv-item {
+  display: block;
+}
+
+.usage-conv-btn {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font);
+  transition: background 0.1s;
+}
+
+.usage-conv-btn:hover {
+  background: var(--bg);
+}
+
+.usage-conv-title {
+  font-size: 11px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-conv-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
 /* ── Stack card ───────────────────────────────────────────────────── */
 
 .stack-card {
@@ -418,6 +613,13 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.conv-chip-cost {
+  flex-shrink: 0;
+  opacity: 0.7;
+  font-size: 9px;
+  font-family: var(--font-mono, ui-monospace, monospace);
 }
 
 .conv-chip-date {

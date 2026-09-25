@@ -1,4 +1,4 @@
-import type { DashboardData, DailyData } from './types'
+import type { DashboardData, DailyData, UsageData } from './types'
 
 /**
  * Fetch dashboard data from the server-side API.
@@ -46,4 +46,17 @@ export async function refreshDaily(): Promise<DailyData> {
     throw new Error(`Daily refresh ${res.status}: ${body}`)
   }
   return res.json() as Promise<DailyData>
+}
+
+/**
+ * Fetch Cursor usage data (billing cycle + per-conversation costs).
+ */
+export async function fetchUsage(
+  signal?: AbortSignal,
+): Promise<UsageData | null> {
+  const res = await fetch('/api/usage', { signal })
+  if (!res.ok) return null
+  const json = await res.json()
+  if (json.status === 'unavailable') return null
+  return json as UsageData
 }
