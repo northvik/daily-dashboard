@@ -11,7 +11,7 @@ import {
   fetchMergedPR,
   repoFromUrl,
 } from './github.ts'
-import { fetchLinearIssues } from './linear.ts'
+import { fetchLinearIssues, rootParent } from './linear.ts'
 import {
   TRUNK_BRANCHES,
   cleanTitle,
@@ -214,7 +214,21 @@ export async function fetchDashboard() {
     }
   }
 
-  const orphanTickets = attachTicketsAndSort(groups, linearIssues)
+  const ticketInputs = linearIssues.map((issue) => {
+    const root = rootParent(issue)
+    return {
+      identifier: issue.identifier,
+      title: issue.title,
+      url: issue.url,
+      priorityLabel: issue.priorityLabel,
+      state: issue.state,
+      project: issue.project,
+      labels: issue.labels,
+      rootParentId: root?.identifier,
+      rootParentTitle: root?.title,
+    }
+  })
+  const orphanTickets = attachTicketsAndSort(groups, ticketInputs)
 
   // Link Cursor agent conversations to groups (local SQLite, zero tokens)
   try {

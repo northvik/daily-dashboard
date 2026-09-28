@@ -33,6 +33,8 @@ export interface TicketInfo {
   priorityOrder: number
   project?: string
   labels?: string[]
+  parentId?: string
+  parentTitle?: string
 }
 
 export interface ConversationRef {

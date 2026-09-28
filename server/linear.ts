@@ -7,6 +7,12 @@ import { env } from './env.ts'
 
 /* ── Types ───────────────────────────────────────────────────────── */
 
+export interface LinearParent {
+  identifier: string
+  title: string
+  parent?: LinearParent | null
+}
+
 export interface LinearIssue {
   identifier: string
   title: string
@@ -16,8 +22,19 @@ export interface LinearIssue {
   state: { name: string; type: string }
   project?: { name: string } | null
   labels: { nodes: { name: string }[] }
+  parent?: LinearParent | null
   updatedAt?: string
   completedAt?: string | null
+}
+
+/** Walk up the parent chain to find the root ancestor. */
+export function rootParent(
+  issue: LinearIssue,
+): { identifier: string; title: string } | null {
+  let p = issue.parent
+  if (!p) return null
+  while (p?.parent) p = p.parent
+  return { identifier: p.identifier, title: p.title }
 }
 
 const ISSUE_FIELDS = `
@@ -25,6 +42,11 @@ const ISSUE_FIELDS = `
   state { name type }
   project { name }
   labels { nodes { name } }
+  parent { identifier title
+    parent { identifier title
+      parent { identifier title }
+    }
+  }
   updatedAt completedAt
 `
 

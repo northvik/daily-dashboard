@@ -43,6 +43,8 @@ export interface TicketInfo {
   priorityOrder: number
   project?: string
   labels?: string[]
+  parentId?: string
+  parentTitle?: string
 }
 
 export interface ConversationRef {
@@ -319,6 +321,9 @@ export interface LinearTicketInput {
   state: { name: string }
   project?: { name: string } | null
   labels: { nodes: { name: string }[] }
+  /** Root ancestor (walked up via rootParent()) */
+  rootParentId?: string
+  rootParentTitle?: string
 }
 
 /** Freshest open PR activity in the group (ms), or 0 if unknown. */
@@ -334,8 +339,9 @@ export function groupFreshnessMs(group: PRGroup): number {
 }
 
 /**
- * Attach Linear ticket info to PR groups. Tickets with no PRs are returned
- * separately (not mixed into the stacks list). Groups sort by PR freshness.
+ * Attach Linear ticket info to PR groups. Sub-tickets that share a parent
+ * are merged into one group named after the parent. Tickets with no PRs
+ * are returned separately. Groups sort by PR freshness.
  */
 export function attachTicketsAndSort(
   groups: PRGroup[],
@@ -352,6 +358,8 @@ export function attachTicketsAndSort(
       priorityOrder: PRIORITY_ORDER[issue.priorityLabel] ?? 4,
       project: issue.project?.name ?? undefined,
       labels: issue.labels.nodes.map((l) => l.name),
+      parentId: issue.rootParentId,
+      parentTitle: issue.rootParentTitle,
     })
   }
 
@@ -362,6 +370,53 @@ export function attachTicketsAndSort(
       linkedTickets.add(ticket)
       group.ticket = ticketMap.get(ticket)
     }
+  }
+
+  // Merge groups whose tickets share a Linear parent
+  const parentGroups = new Map<string, number>() // parentId → index in groups
+  const toRemove = new Set<number>()
+
+  for (let i = 0; i < groups.length; i++) {
+    const parentId = groups[i].ticket?.parentId
+    if (!parentId) continue
+
+    const existing = parentGroups.get(parentId)
+    if (existing != null) {
+      // Merge into the earlier group
+      const target = groups[existing]
+      const source = groups[i]
+      target.prs.push(...source.prs)
+      if (source.ticket) {
+        target.ticket = target.ticket ?? source.ticket
+        // Use parent as the group ticket display
+        target.ticket = {
+          ...target.ticket,
+          id: parentId,
+          title: source.ticket.parentTitle ?? target.ticket.title,
+        }
+      }
+      target.crossRepo =
+        new Set(target.prs.map((p) => p.repo)).size > 1
+      target.name = source.ticket?.parentTitle ?? target.name
+      toRemove.add(i)
+    } else {
+      parentGroups.set(parentId, i)
+      // Rename to parent title
+      const g = groups[i]
+      if (g.ticket?.parentTitle) {
+        g.name = g.ticket.parentTitle
+        g.ticket = {
+          ...g.ticket,
+          id: parentId,
+          title: g.ticket.parentTitle,
+        }
+      }
+    }
+  }
+
+  // Remove merged groups (reverse order to preserve indices)
+  for (const idx of [...toRemove].sort((a, b) => b - a)) {
+    groups.splice(idx, 1)
   }
 
   const orphans: TicketInfo[] = []
