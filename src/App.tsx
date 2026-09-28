@@ -852,6 +852,40 @@ function DailyCostChart({
   )
 }
 
+function RequestCostChart({
+  events,
+  scale,
+}: {
+  events: UsageData['conversations'][0]['events']
+  scale: number
+}) {
+  if (events.length < 2) return null
+  const sorted = [...events].sort((a, b) => a.ts - b.ts)
+  const max = Math.max(...sorted.map((e) => e.cents), 1)
+  const barW = Math.max(3, Math.min(8, Math.floor(200 / sorted.length)))
+
+  return (
+    <div
+      className="req-cost-chart"
+      title="Cost per request (chronological, scaled)"
+    >
+      <div className="req-cost-bars">
+        {sorted.map((ev, i) => (
+          <div
+            key={i}
+            className="req-cost-bar"
+            style={{
+              height: `${Math.max((ev.cents / max) * 32, 1)}px`,
+              width: `${barW}px`,
+            }}
+            title={`#${i + 1}: ${formatCents(ev.cents * scale)} · ${formatTokens(ev.inputTokens + ev.outputTokens)}`}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 type ConvSort = 'cost' | 'recent'
 
 function UsageConvsList({ usage }: { usage: UsageData }) {
@@ -924,6 +958,7 @@ function UsageConvsList({ usage }: { usage: UsageData }) {
                 ⎘
               </button>
             </summary>
+            <RequestCostChart events={c.events} scale={scale} />
             <table className="usage-ev-table">
               <thead>
                 <tr>

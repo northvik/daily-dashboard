@@ -477,6 +477,32 @@ body {
   opacity: 1;
 }
 
+/* ── Per-request cost chart (inside expanded conversation) ─────────── */
+
+.req-cost-chart {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.req-cost-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 36px;
+}
+
+.req-cost-bar {
+  background: var(--purple, #a78bfa);
+  border-radius: 1px 1px 0 0;
+  opacity: 0.65;
+  transition: opacity 0.1s;
+  min-height: 1px;
+}
+
+.req-cost-bar:hover {
+  opacity: 1;
+}
+
 /* ── Sort row ─────────────────────────────────────────────────────── */
 
 .usage-sort-row {
