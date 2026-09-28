@@ -683,6 +683,12 @@ body {
   white-space: nowrap;
 }
 
+.conv-chip-count {
+  flex-shrink: 0;
+  font-size: 9px;
+  opacity: 0.5;
+}
+
 .conv-chip-cost {
   flex-shrink: 0;
   opacity: 0.7;

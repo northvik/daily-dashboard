@@ -293,6 +293,28 @@ function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`
 }
 
+/** Merge conversations with the same title, summing cost, keeping newest date. */
+function dedupeByTitle(
+  refs: ConversationRef[],
+): (ConversationRef & { count: number })[] {
+  const map = new Map<
+    string,
+    ConversationRef & { count: number }
+  >()
+  for (const c of refs) {
+    const existing = map.get(c.title)
+    if (existing) {
+      existing.costCents =
+        (existing.costCents ?? 0) + (c.costCents ?? 0)
+      existing.count += 1
+      if (c.updatedAt > existing.updatedAt) existing.updatedAt = c.updatedAt
+    } else {
+      map.set(c.title, { ...c, count: 1 })
+    }
+  }
+  return [...map.values()]
+}
+
 function ConversationList({
   refs,
   costScale,
@@ -301,12 +323,13 @@ function ConversationList({
   costScale: number
 }) {
   if (refs.length === 0) return null
+  const merged = dedupeByTitle(refs)
   return (
     <div className="conv-row">
       <span className="conv-icon" title="Cursor conversations">
         💬
       </span>
-      {refs.map((c) => {
+      {merged.map((c) => {
         const scaled =
           c.costCents != null && c.costCents > 0
             ? formatCents(c.costCents * costScale)
@@ -319,6 +342,9 @@ function ConversationList({
             onClick={() => void navigator.clipboard.writeText(c.title)}
           >
             <span className="conv-chip-title">{c.title}</span>
+            {c.count > 1 && (
+              <span className="conv-chip-count">×{c.count}</span>
+            )}
             {scaled && <span className="conv-chip-cost">· {scaled}</span>}
             <span className="conv-chip-date">{relativeDate(c.updatedAt)}</span>
           </button>
