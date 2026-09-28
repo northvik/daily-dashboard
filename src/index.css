@@ -450,6 +450,66 @@ body {
   overflow-y: auto;
 }
 
+/* ── Daily cost chart ──────────────────────────────────────────────── */
+
+.daily-cost-chart {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.daily-cost-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 44px;
+}
+
+.daily-cost-bar {
+  background: var(--accent);
+  border-radius: 1px 1px 0 0;
+  opacity: 0.7;
+  transition: opacity 0.1s;
+  min-height: 1px;
+}
+
+.daily-cost-bar:hover {
+  opacity: 1;
+}
+
+/* ── Sort row ─────────────────────────────────────────────────────── */
+
+.usage-sort-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.usage-sort-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-family: var(--font);
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.usage-sort-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.usage-sort-btn.active {
+  border-color: var(--accent);
+  color: var(--text-bright);
+  background: var(--bg);
+}
+
 .usage-conv-list {
   margin: 0;
   padding: 0;

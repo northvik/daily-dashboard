@@ -297,15 +297,11 @@ function formatCents(cents: number): string {
 function dedupeByTitle(
   refs: ConversationRef[],
 ): (ConversationRef & { count: number })[] {
-  const map = new Map<
-    string,
-    ConversationRef & { count: number }
-  >()
+  const map = new Map<string, ConversationRef & { count: number }>()
   for (const c of refs) {
     const existing = map.get(c.title)
     if (existing) {
-      existing.costCents =
-        (existing.costCents ?? 0) + (c.costCents ?? 0)
+      existing.costCents = (existing.costCents ?? 0) + (c.costCents ?? 0)
       existing.count += 1
       if (c.updatedAt > existing.updatedAt) existing.updatedAt = c.updatedAt
     } else {
@@ -342,9 +338,7 @@ function ConversationList({
             onClick={() => void navigator.clipboard.writeText(c.title)}
           >
             <span className="conv-chip-title">{c.title}</span>
-            {c.count > 1 && (
-              <span className="conv-chip-count">×{c.count}</span>
-            )}
+            {c.count > 1 && <span className="conv-chip-count">×{c.count}</span>}
             {scaled && <span className="conv-chip-cost">· {scaled}</span>}
             <span className="conv-chip-date">{relativeDate(c.updatedAt)}</span>
           </button>
@@ -768,19 +762,144 @@ function formatTokens(n: number): string {
   return String(n)
 }
 
+interface MergedConv {
+  title: string
+  costCents: number
+  requestCount: number
+  lastEventAt: number
+  events: UsageData['conversations'][0]['events']
+  ids: string[]
+}
+
+function mergeConvsByTitle(convs: UsageData['conversations']): MergedConv[] {
+  const map = new Map<string, MergedConv>()
+  for (const c of convs) {
+    const existing = map.get(c.title)
+    if (existing) {
+      existing.costCents += c.costCents
+      existing.requestCount += c.requestCount
+      if (c.lastEventAt > existing.lastEventAt)
+        existing.lastEventAt = c.lastEventAt
+      existing.events.push(...c.events)
+      existing.ids.push(c.id)
+    } else {
+      map.set(c.title, {
+        title: c.title,
+        costCents: c.costCents,
+        requestCount: c.requestCount,
+        lastEventAt: c.lastEventAt,
+        events: [...c.events],
+        ids: [c.id],
+      })
+    }
+  }
+  return [...map.values()]
+}
+
+function buildDailyBars(
+  events: UsageData['conversations'][0]['events'],
+  scale: number,
+  startMs: number,
+  endMs: number,
+): { label: string; cents: number }[] {
+  const byDay = new Map<string, number>()
+  for (const ev of events) {
+    const day = new Date(ev.ts).toISOString().slice(0, 10)
+    byDay.set(day, (byDay.get(day) ?? 0) + ev.cents * scale)
+  }
+  const days: { label: string; cents: number }[] = []
+  const d = new Date(startMs)
+  const end = new Date(Math.min(endMs, Date.now()))
+  while (d <= end) {
+    const key = d.toISOString().slice(0, 10)
+    days.push({ label: key, cents: byDay.get(key) ?? 0 })
+    d.setDate(d.getDate() + 1)
+  }
+  return days
+}
+
+function DailyCostChart({
+  events,
+  scale,
+  startMs,
+  endMs,
+}: {
+  events: UsageData['conversations'][0]['events']
+  scale: number
+  startMs: number
+  endMs: number
+}) {
+  const days = buildDailyBars(events, scale, startMs, endMs)
+  const max = Math.max(...days.map((d) => d.cents), 1)
+  const barW = Math.max(2, Math.floor(200 / Math.max(days.length, 1)))
+
+  return (
+    <div className="daily-cost-chart" title="Cost per day (scaled)">
+      <div className="daily-cost-bars">
+        {days.map((day) => (
+          <div
+            key={day.label}
+            className="daily-cost-bar"
+            style={{
+              height: `${Math.max((day.cents / max) * 40, 1)}px`,
+              width: `${barW}px`,
+            }}
+            title={`${day.label}: ${formatCents(day.cents)}`}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+type ConvSort = 'cost' | 'recent'
+
 function UsageConvsList({ usage }: { usage: UsageData }) {
   const scale = computeCostScale(usage)
+  const [sort, setSort] = useState<ConvSort>('recent')
+  const merged = mergeConvsByTitle(usage.conversations)
+  const allEvents = usage.conversations.flatMap((c) => c.events)
+
+  const sorted = [...merged].sort((a, b) =>
+    sort === 'cost' ? b.costCents - a.costCents : b.lastEventAt - a.lastEventAt,
+  )
+
   return (
     <div className="usage-panel-content usage-convos">
       <div className="usage-period">
         {usagePeriodLabel(usage.cycle)}
-        <span className="usage-legend">raw → scaled to billed total</span>
+        <span className="usage-legend">raw → scaled</span>
+      </div>
+      <DailyCostChart
+        events={allEvents}
+        scale={scale}
+        startMs={usage.cycle.startMs}
+        endMs={usage.cycle.endMs}
+      />
+      <div className="usage-sort-row">
+        <button
+          className={`usage-sort-btn ${sort === 'recent' ? 'active' : ''}`}
+          onClick={() => setSort('recent')}
+        >
+          Latest
+        </button>
+        <button
+          className={`usage-sort-btn ${sort === 'cost' ? 'active' : ''}`}
+          onClick={() => setSort('cost')}
+        >
+          Costliest
+        </button>
       </div>
       <div className="usage-conv-list">
-        {usage.conversations.map((c) => (
-          <details key={c.id} className="usage-conv-row">
+        {sorted.map((c) => (
+          <details key={c.ids[0]} className="usage-conv-row">
             <summary className="usage-conv-summary">
-              <span className="usage-conv-title">{c.title}</span>
+              <span className="usage-conv-title">
+                {c.title}
+                {c.ids.length > 1 && (
+                  <span className="conv-chip-count"> ×{c.ids.length}</span>
+                )}
+              </span>
               <span className="usage-conv-meta">
                 <s className="cost-raw">{formatCents(c.costCents)}</s>{' '}
                 {formatCents(c.costCents * scale)} ·{' '}

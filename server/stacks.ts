@@ -395,8 +395,7 @@ export function attachTicketsAndSort(
           title: source.ticket.parentTitle ?? target.ticket.title,
         }
       }
-      target.crossRepo =
-        new Set(target.prs.map((p) => p.repo)).size > 1
+      target.crossRepo = new Set(target.prs.map((p) => p.repo)).size > 1
       target.name = source.ticket?.parentTitle ?? target.name
       toRemove.add(i)
     } else {
