@@ -684,11 +684,15 @@ function UsageStrip({ usage }: { usage: UsageData | null }) {
   const total = formatCents(
     cycle.includedCents + cycle.bonusCents + cycle.onDemandCents,
   )
-  const totalTokens = models.reduce(
+  const realTokens = models.reduce(
     (s, m) => s + m.inputTokens + m.outputTokens,
     0,
   )
-  const tokLabel = formatTokens(totalTokens)
+  const cacheTokens = models.reduce(
+    (s, m) => s + m.cacheWriteTokens + m.cacheReadTokens,
+    0,
+  )
+  const tokLabel = formatTokens(realTokens)
   const resetDate = new Date(cycle.endMs).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -697,7 +701,10 @@ function UsageStrip({ usage }: { usage: UsageData | null }) {
     <div className="usage-strip">
       <span className="usage-strip-breakdown">
         {included} included + {bonus} bonus + {onDemand} on-demand ={' '}
-        <strong>{total}</strong> · {tokLabel} tokens
+        <strong>{total}</strong> · {tokLabel} tokens{' '}
+        <span className="usage-strip-cache">
+          ({formatTokens(cacheTokens)} cached)
+        </span>
       </span>
       <span className="usage-strip-reset">resets {resetDate}</span>
     </div>
@@ -733,19 +740,27 @@ function UsageModelsList({ usage }: { usage: UsageData }) {
         </span>
       </div>
       <ul className="usage-model-list">
-        {usage.models.map((m) => {
-          const totalTok = m.inputTokens + m.outputTokens
-          const tokLabel =
-            totalTok >= 1e6
-              ? `${(totalTok / 1e6).toFixed(1)}M`
-              : `${(totalTok / 1e3).toFixed(0)}k`
+        {[...usage.models]
+          .sort((a, b) => b.cents * scale - a.cents * scale)
+          .map((m) => {
+          const realTok = m.inputTokens + m.outputTokens
+          const cacheTok = m.cacheWriteTokens + m.cacheReadTokens
+          const scaledCents = m.cents * scale
           return (
             <li key={m.model} className="usage-model-item">
               <span className="usage-model-name">{m.model}</span>
-              <span className="usage-model-tokens">{tokLabel}</span>
+              <span className="usage-model-tokens">
+                {formatTokens(realTok)}
+                {cacheTok > 0 && (
+                  <span className="usage-cache-hint">
+                    {' '}
+                    ({formatTokens(cacheTok)} cache)
+                  </span>
+                )}
+              </span>
               <span className="usage-model-cost">
                 <s className="cost-raw">{formatCents(m.cents)}</s>{' '}
-                {formatCents(m.cents * scale)}
+                {formatCents(scaledCents)}
               </span>
             </li>
           )
@@ -797,21 +812,22 @@ function mergeConvsByTitle(convs: UsageData['conversations']): MergedConv[] {
 }
 
 function buildDailyBars(
-  events: UsageData['conversations'][0]['events'],
+  events: { ts: number; cents: number }[],
   scale: number,
   startMs: number,
-  endMs: number,
 ): { label: string; cents: number }[] {
   const byDay = new Map<string, number>()
   for (const ev of events) {
-    const day = new Date(ev.ts).toISOString().slice(0, 10)
+    const day = new Date(ev.ts).toLocaleDateString('sv-SE') // YYYY-MM-DD local
     byDay.set(day, (byDay.get(day) ?? 0) + ev.cents * scale)
   }
   const days: { label: string; cents: number }[] = []
   const d = new Date(startMs)
-  const end = new Date(Math.min(endMs, Date.now()))
-  while (d <= end) {
-    const key = d.toISOString().slice(0, 10)
+  d.setHours(0, 0, 0, 0)
+  const today = new Date()
+  today.setHours(23, 59, 59, 999)
+  while (d <= today) {
+    const key = d.toLocaleDateString('sv-SE')
     days.push({ label: key, cents: byDay.get(key) ?? 0 })
     d.setDate(d.getDate() + 1)
   }
@@ -822,14 +838,12 @@ function DailyCostChart({
   events,
   scale,
   startMs,
-  endMs,
 }: {
-  events: UsageData['conversations'][0]['events']
+  events: { ts: number; cents: number }[]
   scale: number
   startMs: number
-  endMs: number
 }) {
-  const days = buildDailyBars(events, scale, startMs, endMs)
+  const days = buildDailyBars(events, scale, startMs)
   const max = Math.max(...days.map((d) => d.cents), 1)
   const barW = Math.max(2, Math.floor(200 / Math.max(days.length, 1)))
 
@@ -905,10 +919,9 @@ function UsageConvsList({ usage }: { usage: UsageData }) {
         <span className="usage-legend">raw → scaled</span>
       </div>
       <DailyCostChart
-        events={allEvents}
+        events={usage.allEvents ?? allEvents}
         scale={scale}
         startMs={usage.cycle.startMs}
-        endMs={usage.cycle.endMs}
       />
       <div className="usage-sort-row">
         <button
@@ -942,7 +955,19 @@ function UsageConvsList({ usage }: { usage: UsageData }) {
                     (s, e) => s + e.inputTokens + e.outputTokens,
                     0,
                   ),
-                )}{' '}
+                )}
+                <span className="usage-cache-hint">
+                  {' '}
+                  (
+                  {formatTokens(
+                    c.events.reduce(
+                      (s, e) =>
+                        s + e.cacheWriteTokens + e.cacheReadTokens,
+                      0,
+                    ),
+                  )}{' '}
+                  cache)
+                </span>{' '}
                 · {c.requestCount} req ·{' '}
                 {relativeDate(new Date(c.lastEventAt).toISOString())}
               </span>

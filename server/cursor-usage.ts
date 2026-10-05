@@ -32,6 +32,8 @@ export interface ModelUsage {
   cents: number
   inputTokens: number
   outputTokens: number
+  cacheWriteTokens: number
+  cacheReadTokens: number
 }
 
 export interface RequestEvent {
@@ -40,6 +42,8 @@ export interface RequestEvent {
   cents: number
   inputTokens: number
   outputTokens: number
+  cacheWriteTokens: number
+  cacheReadTokens: number
 }
 
 export interface ConversationCost {
@@ -54,6 +58,8 @@ export interface UsageSummary {
   cycle: CycleInfo
   models: ModelUsage[]
   conversations: ConversationCost[]
+  /** All events (including null/agent convId) for the daily chart */
+  allEvents: RequestEvent[]
   fetchedAt: string
 }
 
@@ -189,7 +195,13 @@ async function buildUsageSummary(): Promise<UsageSummary> {
   // Aggregate by model from actual events (covers on-demand + included)
   const modelMap = new Map<
     string,
-    { cents: number; inputTokens: number; outputTokens: number }
+    {
+      cents: number
+      inputTokens: number
+      outputTokens: number
+      cacheWriteTokens: number
+      cacheReadTokens: number
+    }
   >()
   const convMap = new Map<
     string,
@@ -200,24 +212,44 @@ async function buildUsageSummary(): Promise<UsageSummary> {
       events: RequestEvent[]
     }
   >()
+  const allEvents: RequestEvent[] = []
 
   for (const ev of events) {
-    // Model aggregation
     const model = ev.model || 'unknown'
+    const tok = ev.tokenUsage
+    const inTok = tok?.inputTokens ?? 0
+    const outTok = tok?.outputTokens ?? 0
+    const cwTok = tok?.cacheWriteTokens ?? 0
+    const crTok = tok?.cacheReadTokens ?? 0
+    const ts = Number(ev.timestamp)
+    const cents = ev.chargedCents ?? 0
+
+    const reqEv: RequestEvent = {
+      ts,
+      model,
+      cents,
+      inputTokens: inTok,
+      outputTokens: outTok,
+      cacheWriteTokens: cwTok,
+      cacheReadTokens: crTok,
+    }
+
+    // Flat list for the daily chart (all events, no filtering)
+    allEvents.push(reqEv)
+
+    // Model aggregation
     const me = modelMap.get(model) ?? {
       cents: 0,
       inputTokens: 0,
       outputTokens: 0,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 0,
     }
-    me.cents += ev.chargedCents ?? 0
-    const tok = ev.tokenUsage
-    if (tok) {
-      me.inputTokens +=
-        (tok.inputTokens ?? 0) +
-        (tok.cacheWriteTokens ?? 0) +
-        (tok.cacheReadTokens ?? 0)
-      me.outputTokens += tok.outputTokens ?? 0
-    }
+    me.cents += cents
+    me.inputTokens += inTok
+    me.outputTokens += outTok
+    me.cacheWriteTokens += cwTok
+    me.cacheReadTokens += crTok
     modelMap.set(model, me)
 
     // Conversation aggregation — skip null and Task subagents (agent-xxx)
@@ -229,23 +261,10 @@ async function buildUsageSummary(): Promise<UsageSummary> {
       lastEventAt: 0,
       events: [],
     }
-    ce.costCents += ev.chargedCents ?? 0
+    ce.costCents += cents
     ce.requestCount += 1
-    const ts = Number(ev.timestamp)
     if (ts > ce.lastEventAt) ce.lastEventAt = ts
-    const inTok = tok
-      ? (tok.inputTokens ?? 0) +
-        (tok.cacheWriteTokens ?? 0) +
-        (tok.cacheReadTokens ?? 0)
-      : 0
-    const outTok = tok?.outputTokens ?? 0
-    ce.events.push({
-      ts,
-      model,
-      cents: ev.chargedCents ?? 0,
-      inputTokens: inTok,
-      outputTokens: outTok,
-    })
+    ce.events.push(reqEv)
     convMap.set(cid, ce)
   }
 
@@ -257,7 +276,13 @@ async function buildUsageSummary(): Promise<UsageSummary> {
     .map(([id, v]) => ({ id, ...v }))
     .sort((a, b) => b.lastEventAt - a.lastEventAt)
 
-  return { cycle, models, conversations, fetchedAt: new Date().toISOString() }
+  return {
+    cycle,
+    models,
+    conversations,
+    allEvents,
+    fetchedAt: new Date().toISOString(),
+  }
 }
 
 /* ── Cache ────────────────────────────────────────────────────────── */

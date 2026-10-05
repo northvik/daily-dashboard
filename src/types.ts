@@ -119,6 +119,8 @@ export interface UsageModel {
   cents: number
   inputTokens: number
   outputTokens: number
+  cacheWriteTokens: number
+  cacheReadTokens: number
 }
 
 export interface UsageRequestEvent {
@@ -127,6 +129,8 @@ export interface UsageRequestEvent {
   cents: number
   inputTokens: number
   outputTokens: number
+  cacheWriteTokens: number
+  cacheReadTokens: number
 }
 
 export interface UsageConversation {
@@ -142,5 +146,7 @@ export interface UsageData {
   cycle: UsageCycle
   models: UsageModel[]
   conversations: UsageConversation[]
+  /** All events (including null/agent convId) for the daily chart */
+  allEvents?: UsageRequestEvent[]
   fetchedAt: string
 }
