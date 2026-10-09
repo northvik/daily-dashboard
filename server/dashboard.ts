@@ -9,8 +9,10 @@ import {
   fetchReviewsBatch,
   fetchGitSpiceStacks,
   fetchMergedPR,
+  fetchPRsMergedSince,
   repoFromUrl,
 } from './github.ts'
+import { getDeployStatus, type DeployQuery } from './deploys.ts'
 import { fetchLinearIssues, rootParent } from './linear.ts'
 import {
   TRUNK_BRANCHES,
@@ -141,6 +143,9 @@ export async function fetchDashboard() {
           description: '',
           base: detail.base.ref,
           merged: true,
+          mergeSha: detail.merge_commit_sha ?? undefined,
+          headSha: detail.head.sha,
+          mergedAt: detail.merged_at ?? undefined,
           status: undefined,
           depth: 0,
           updatedAt: detail.updated_at ?? detail.merged_at ?? undefined,
@@ -230,16 +235,23 @@ export async function fetchDashboard() {
   })
   const orphanTickets = attachTicketsAndSort(groups, ticketInputs)
 
-  // Link Cursor agent conversations to groups (local SQLite, zero tokens)
+  // Deploy status for merged PRs — runs alongside the conversation lookup
+  const shippedPromise = attachDeploys(groups, repoOwners).catch((err) => {
+    console.warn('[dashboard] Deploy status skipped:', err)
+    return [] as PR[]
+  })
+
+  // Link agent conversations to groups (local data, zero tokens)
   try {
     const { findConversationsForGroups } = await import('./conversations.ts')
-    const { getConversationCosts } = await import('./cursor-usage.ts')
+    const { getConversationCosts } = await import('./usage.ts')
     const inputs = groups.map((g) => {
       const ticketIds = [
         g.ticket?.id,
         ...g.prs.map((p) => p.ticket).filter(Boolean),
       ].filter((t): t is string => Boolean(t))
       const prNumbers = g.prs.map((p) => p.number)
+      const prRefs = g.prs.map((p) => `${p.repo}#${p.number}`)
       const branchNames = g.prs
         .map((p) => headRefs.get(`${p.repo}#${p.number}`))
         .filter((b): b is string => Boolean(b))
@@ -247,6 +259,7 @@ export async function fetchDashboard() {
         key: g.ticket?.id ?? `${g.name}-${g.prs[0]?.number}`,
         ticketIds: [...new Set(ticketIds)],
         prNumbers,
+        prRefs,
         branchNames,
       }
     })
@@ -268,5 +281,93 @@ export async function fetchDashboard() {
     console.warn('[dashboard] Conversation lookup skipped:', err)
   }
 
-  return { groups, orphanTickets, fetchedAt: new Date().toISOString() }
+  const shipped = await shippedPromise
+
+  return {
+    groups,
+    orphanTickets,
+    shipped,
+    aiProvider: env.aiProvider,
+    fetchedAt: new Date().toISOString(),
+  }
+}
+
+/* ── Deploy status ───────────────────────────────────────────────── */
+
+const SHIPPED_DAYS = 7
+const DONE_VISIBLE_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Attach per-cluster deploy status to merged stack ancestors and return
+ * the "shipped" list: my PRs merged in the last week that are still rolling
+ * out, or finished within the last day.
+ */
+async function attachDeploys(
+  groups: { prs: PR[] }[],
+  repoOwners: Map<string, string>,
+): Promise<PR[]> {
+  const since = new Date(Date.now() - SHIPPED_DAYS * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10)
+  const items = await fetchPRsMergedSince(since).catch(() => [])
+
+  const shipped = (
+    await Promise.all(
+      items.map(async (item) => {
+        const { owner, repo } = repoFromUrl(item.repository_url)
+        repoOwners.set(repo, repoOwners.get(repo) ?? owner)
+        const d = await fetchMergedPR(owner, repo, item.number)
+        if (!d?.merge_commit_sha) return null
+        const pr: PR = {
+          repo,
+          number: d.number,
+          title: cleanTitle(d.title),
+          url: d.html_url,
+          ...extractTicket(d.title, d.body ?? ''),
+          description: '',
+          base: d.base.ref,
+          merged: true,
+          mergeSha: d.merge_commit_sha,
+          headSha: d.head.sha,
+          mergedAt: d.merged_at ?? undefined,
+          depth: 0,
+        }
+        return pr
+      }),
+    )
+  ).filter((p): p is PR => p !== null)
+
+  const ancestors = groups.flatMap((g) => g.prs.filter((p) => p.merged))
+  const queries = new Map<string, DeployQuery>()
+  // Ancestors first: they're on screen; shipped is newest-first already
+  for (const p of [...ancestors, ...shipped]) {
+    const owner = repoOwners.get(p.repo) ?? env.githubOrg
+    if (!p.mergeSha || !owner) continue
+    queries.set(`${p.repo}#${p.number}`, {
+      owner,
+      repo: p.repo,
+      number: p.number,
+      mergeSha: p.mergeSha,
+      headSha: p.headSha,
+    })
+  }
+
+  const status = await getDeployStatus([...queries.values()])
+  for (const p of [...shipped, ...ancestors]) {
+    p.deploys = status.get(`${p.repo}#${p.number}`)
+  }
+
+  const now = Date.now()
+  return shipped
+    .filter((p) => {
+      if (!p.deploys) return false
+      const done = p.deploys.every(
+        (d) =>
+          d.state === 'deployed' ||
+          d.state === 'release-only' ||
+          d.state === 'untracked',
+      )
+      return !done || now - Date.parse(p.mergedAt ?? '') < DONE_VISIBLE_MS
+    })
+    .sort((a, b) => Date.parse(b.mergedAt ?? '') - Date.parse(a.mergedAt ?? ''))
 }

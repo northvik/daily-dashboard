@@ -27,9 +27,10 @@ export interface GHPRDetail {
   mergeable: boolean | null
   draft: boolean
   merged_at: string | null
+  merge_commit_sha?: string | null
   updated_at?: string
   base: { ref: string }
-  head: { ref: string }
+  head: { ref: string; sha?: string }
 }
 
 export interface ReviewInfo {
@@ -39,7 +40,7 @@ export interface ReviewInfo {
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
-async function ghRest<T>(url: string): Promise<T> {
+export async function ghRest<T>(url: string): Promise<T> {
   const res = await fetch(url, {
     headers: {
       Authorization: `Bearer ${env.githubToken}`,
@@ -48,6 +49,30 @@ async function ghRest<T>(url: string): Promise<T> {
   })
   if (!res.ok) throw new Error(`GitHub ${res.status}: ${url}`)
   return res.json() as Promise<T>
+}
+
+/**
+ * Search API wrapper. Search allows 30 calls/min shared by every tool on the
+ * account, so results are reused for 30 s and the last good result is served
+ * when GitHub rate-limits us — one 403 shouldn't take the dashboard down.
+ */
+const SEARCH_FRESH_MS = 30_000
+const searchCache = new Map<string, { at: number; items: GHSearchItem[] }>()
+
+async function searchIssues(url: string): Promise<GHSearchItem[]> {
+  const hit = searchCache.get(url)
+  if (hit && Date.now() - hit.at < SEARCH_FRESH_MS) return hit.items
+  try {
+    const data = await ghRest<{ items: GHSearchItem[] }>(url)
+    searchCache.set(url, { at: Date.now(), items: data.items })
+    return data.items
+  } catch (err) {
+    if (hit) {
+      console.warn('[github] search failed, serving last result:', String(err))
+      return hit.items
+    }
+    throw err
+  }
 }
 
 async function ghGraphQL<T>(query: string): Promise<T> {
@@ -85,10 +110,9 @@ export function repoFromUrl(repositoryUrl: string): {
 
 export async function fetchOpenPRs(): Promise<GHSearchItem[]> {
   const q = encodeURIComponent(`is:pr is:open author:${env.githubUsername}`)
-  const data = await ghRest<{ items: GHSearchItem[] }>(
+  return searchIssues(
     `https://api.github.com/search/issues?q=${q}&sort=updated&order=desc&per_page=50`,
   )
-  return data.items
 }
 
 /**
@@ -100,10 +124,9 @@ export async function fetchPRsUpdatedSince(
   const q = encodeURIComponent(
     `is:pr author:${env.githubUsername} updated:>=${sinceDate}`,
   )
-  const data = await ghRest<{ items: GHSearchItem[] }>(
+  return searchIssues(
     `https://api.github.com/search/issues?q=${q}&sort=updated&order=desc&per_page=50`,
   )
-  return data.items
 }
 
 /**
@@ -113,10 +136,23 @@ export async function fetchPRsMergedOn(date: string): Promise<GHSearchItem[]> {
   const q = encodeURIComponent(
     `is:pr is:merged author:${env.githubUsername} merged:${date}`,
   )
-  const data = await ghRest<{ items: GHSearchItem[] }>(
+  return searchIssues(
     `https://api.github.com/search/issues?q=${q}&sort=updated&order=desc&per_page=30`,
   )
-  return data.items
+}
+
+/**
+ * PRs authored by the user merged on or after `date` (YYYY-MM-DD).
+ */
+export async function fetchPRsMergedSince(
+  date: string,
+): Promise<GHSearchItem[]> {
+  const q = encodeURIComponent(
+    `is:pr is:merged author:${env.githubUsername} merged:>=${date}`,
+  )
+  return searchIssues(
+    `https://api.github.com/search/issues?q=${q}&sort=updated&order=desc&per_page=30`,
+  )
 }
 
 export async function fetchPRDetail(
@@ -214,11 +250,19 @@ export async function fetchGitSpiceStacks(
   return result
 }
 
+/** Merged PRs never change — cache their details for the server's lifetime. */
+const mergedCache = new Map<string, GHPRDetail>()
+
 export async function fetchMergedPR(
   owner: string,
   repo: string,
   number: number,
 ): Promise<GHPRDetail | null> {
+  const key = `${owner}/${repo}#${number}`
+  const hit = mergedCache.get(key)
+  if (hit) return hit
   const detail = await fetchPRDetail(owner, repo, number).catch(() => null)
-  return detail?.merged_at ? detail : null
+  if (!detail?.merged_at) return null
+  mergedCache.set(key, detail)
+  return detail
 }

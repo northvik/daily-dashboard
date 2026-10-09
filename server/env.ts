@@ -24,6 +24,15 @@ export function assertEnv(): void {
   // Linear / Cursor / Slack are optional — features degrade gracefully
 }
 
+export type AiProvider = 'claude' | 'cursor'
+
+const DEFAULT_MODEL: Record<AiProvider, string> = {
+  claude: 'claude-opus-5-5',
+  cursor: 'claude-opus-4-6',
+}
+
+let warnedProvider = false
+
 export const env = {
   get githubToken() {
     return required('GITHUB_TOKEN')
@@ -45,11 +54,56 @@ export const env = {
   get linearWorkspace() {
     return optional('LINEAR_WORKSPACE')
   },
+  /** Which agent + local data source to use. Defaults to Claude Code. */
+  get aiProvider(): AiProvider {
+    const v = optional('AI_PROVIDER', 'claude').toLowerCase()
+    if (v === 'claude' || v === 'cursor') return v
+    if (!warnedProvider) {
+      warnedProvider = true
+      console.warn(`[env] Unknown AI_PROVIDER "${v}" — using claude`)
+    }
+    return 'claude'
+  },
+  get aiModel() {
+    return optional('AI_MODEL', DEFAULT_MODEL[this.aiProvider])
+  },
   get cursorApiKey() {
     return optional('CURSOR_API_KEY')
   },
   get slackUserId() {
     return optional('SLACK_USER_ID')
+  },
+  /** GitOps repo holding cluster image pins, owner/name */
+  get deployRepo() {
+    return optional('DEPLOY_REPO', 'gladiaio/kube-gladia')
+  },
+  /** Flux monorepo with per-cluster app values (apps/<app>/deploy/clusters/…) */
+  get deployFluxRepo() {
+    return optional('DEPLOY_FLUX_REPO', 'gladiaio/gladia')
+  },
+  /** Service repo → image name overrides, "repo:image,repo2:image2" */
+  get deployImageMap(): Map<string, string> {
+    const pairs = optional('DEPLOY_IMAGE_MAP')
+      .split(',')
+      .map((p) => p.split(':').map((x) => x.trim()))
+      .filter((p): p is [string, string] => p.length === 2 && !!p[0] && !!p[1])
+    return new Map(pairs)
+  },
+  /** Cross-check deploys against running pods with kubectl (read-only) */
+  get deployLiveCheck() {
+    return optional('DEPLOY_LIVE_CHECK') === '1'
+  },
+  /** kube-gladia env → kube context overrides, "prod-EU:K0S,…" */
+  get deployKubeContexts(): Map<string, string> {
+    const pairs = optional('DEPLOY_KUBE_CONTEXTS')
+      .split(',')
+      .map((p) => p.split(':').map((x) => x.trim()))
+      .filter((p): p is [string, string] => p.length === 2 && !!p[0] && !!p[1])
+    return new Map(pairs)
+  },
+  /** Slack user OAuth token (search:read) — direct fetch instead of MCP */
+  get slackUserToken() {
+    return optional('SLACK_USER_TOKEN')
   },
 }
 
@@ -79,9 +133,19 @@ export function logEnvStatus(): void {
     '[env] LINEAR_WORKSPACE  ',
     process.env.LINEAR_WORKSPACE || '(optional)',
   )
+  console.log('[env] AI_PROVIDER       ', env.aiProvider)
+  console.log('[env] AI_MODEL          ', env.aiModel)
+  console.log(
+    '[env] ANTHROPIC_API_KEY ',
+    process.env.ANTHROPIC_API_KEY ? '✓' : '(optional — Claude Code login)',
+  )
   console.log('[env] CURSOR_API_KEY    ', ok(process.env.CURSOR_API_KEY ?? ''))
   console.log(
     '[env] SLACK_USER_ID     ',
     process.env.SLACK_USER_ID || '(optional)',
+  )
+  console.log(
+    '[env] SLACK_USER_TOKEN  ',
+    ok(process.env.SLACK_USER_TOKEN ?? ''),
   )
 }

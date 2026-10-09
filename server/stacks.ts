@@ -3,6 +3,7 @@
  * Runs server-side only.
  */
 
+import type { EnvDeploy } from './deploys.ts'
 import type { GHPRDetail, ReviewInfo } from './github.ts'
 import { linearIssueUrl } from './env.ts'
 
@@ -28,6 +29,14 @@ export interface PR {
   description: string
   base: string
   merged?: boolean
+  /** Merge commit — merged PRs only, for deploy tracking */
+  mergeSha?: string
+  /** Head commit — merged PRs only, for PR-triggered deploy workflows */
+  headSha?: string
+  /** ISO timestamp — merged PRs only */
+  mergedAt?: string
+  /** Per-cluster deploy status — merged PRs with a known image */
+  deploys?: EnvDeploy[]
   status?: PRStatus
   depth: number
   /** ISO timestamp — freshest open-PR activity drives group order */

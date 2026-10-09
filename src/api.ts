@@ -18,6 +18,7 @@ export async function fetchDashboard(
   return {
     ...json,
     orphanTickets: json.orphanTickets ?? [],
+    shipped: json.shipped ?? [],
     fetchedAt: new Date(json.fetchedAt),
   }
 }
@@ -49,7 +50,7 @@ export async function refreshDaily(): Promise<DailyData> {
 }
 
 /**
- * Fetch Cursor usage data (billing cycle + per-conversation costs).
+ * Fetch usage data (Claude Code or Cursor, per AI_PROVIDER).
  */
 export async function fetchUsage(
   signal?: AbortSignal,

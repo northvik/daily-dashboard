@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchDashboard, fetchDaily, fetchUsage, refreshDaily } from './api'
 import type {
+  AiProvider,
   ConversationRef,
   DashboardData,
   DailyData,
   DailySubject,
   DailyTag,
+  DeployState,
+  EnvDeploy,
   PR,
   PRGroup,
   PRStatus,
@@ -221,6 +224,131 @@ function buildTree(prs: PR[]): TreeNode[] {
   return roots
 }
 
+/* ── Deploy chips ────────────────────────────────────────────────── */
+
+const DEPLOY_GLYPH: Record<DeployState, string> = {
+  deployed: '✓',
+  applying: '⏳',
+  promoting: '⏳',
+  failed: '✗',
+  pending: '·',
+  'release-only': '–',
+  untracked: '?',
+}
+
+const DEPLOY_LABEL: Record<DeployState, string> = {
+  deployed: 'deployed',
+  applying: 'apply running',
+  promoting: 'promote PR open',
+  failed: 'apply failed',
+  pending: 'not promoted yet',
+  'release-only': 'waits for a release',
+  untracked: 'runs a release that can’t be mapped to PRs',
+}
+
+const LIVE_LABEL: Record<NonNullable<EnvDeploy['live']>, string> = {
+  running: 'running in cluster',
+  'not-running': 'pinned, not running yet',
+  unknown: 'live check unavailable (kubectl / tsh login?)',
+}
+
+function isRolledOut(deploys: EnvDeploy[]): boolean {
+  return deploys.every(
+    (d) =>
+      d.state === 'deployed' ||
+      d.state === 'release-only' ||
+      d.state === 'untracked',
+  )
+}
+
+function DeployChips({ deploys }: { deploys?: EnvDeploy[] }) {
+  if (!deploys?.length) return null
+  return (
+    <span className="deploy-chips">
+      {deploys.map((d, i) => {
+        // Workflow deploys: print the stack name once before its env chips
+        const groupLabel =
+          d.group && d.group !== deploys[i - 1]?.group ? (
+            <span key={`g-${d.group}`} className="deploy-group">
+              {d.group}
+            </span>
+          ) : null
+        const title = [
+          `${d.env}: ${d.group || !d.tag ? DEPLOY_LABEL[d.state].replace('apply', 'run') : DEPLOY_LABEL[d.state]}`,
+          d.tag && `pinned ${d.tag.slice(0, 16)}`,
+          d.live && LIVE_LABEL[d.live],
+          d.at && relativeDate(d.at),
+        ]
+          .filter(Boolean)
+          .join(' · ')
+        const body = (
+          <>
+            {d.short}
+            {DEPLOY_GLYPH[d.state]}
+            {d.live === 'running' && '●'}
+            {d.live === 'unknown' && '?'}
+          </>
+        )
+        const chip = d.url ? (
+          <a
+            key={d.env}
+            className={`deploy-chip ${d.state}`}
+            href={d.url}
+            target="_blank"
+            rel="noopener"
+            title={title}
+          >
+            {body}
+          </a>
+        ) : (
+          <span key={d.env} className={`deploy-chip ${d.state}`} title={title}>
+            {body}
+          </span>
+        )
+        return groupLabel ? [groupLabel, chip] : chip
+      })}
+    </span>
+  )
+}
+
+function ShippedList({ prs }: { prs: PR[] }) {
+  if (prs.length === 0) return null
+  const rolling = prs.filter((p) => p.deploys && !isRolledOut(p.deploys))
+  return (
+    <details className="shipped" open={rolling.length > 0}>
+      <summary>
+        Shipped{' '}
+        <span className="shipped-summary">
+          {rolling.length > 0
+            ? `${rolling.length} rolling out`
+            : `${prs.length} deployed`}
+        </span>
+      </summary>
+      <ul>
+        {prs.map((p) => (
+          <li key={`${p.repo}#${p.number}`} className="shipped-row">
+            <span className="pr-meta">
+              {p.repo}#{p.number}
+            </span>
+            <a
+              href={p.url}
+              target="_blank"
+              rel="noopener"
+              className="pr-title-link merged"
+            >
+              {p.title}
+            </a>
+            <DeployChips deploys={p.deploys} />
+            {p.mergedAt && (
+              <span className="shipped-age">{relativeDate(p.mergedAt)}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
 function PRLeaf({ pr }: { pr: PR }) {
   return (
     <div className="pr-row">
@@ -246,6 +374,7 @@ function PRLeaf({ pr }: { pr: PR }) {
           {pr.ticket}
         </a>
       )}
+      {pr.merged && <DeployChips deploys={pr.deploys} />}
     </div>
   )
 }
@@ -314,15 +443,21 @@ function dedupeByTitle(
 function ConversationList({
   refs,
   costScale,
+  provider,
 }: {
   refs: ConversationRef[]
   costScale: number
+  provider: AiProvider
 }) {
   if (refs.length === 0) return null
   const merged = dedupeByTitle(refs)
+  const isClaude = provider === 'claude'
   return (
     <div className="conv-row">
-      <span className="conv-icon" title="Cursor conversations">
+      <span
+        className="conv-icon"
+        title={isClaude ? 'Claude Code sessions' : 'Cursor conversations'}
+      >
         💬
       </span>
       {merged.map((c) => {
@@ -334,8 +469,16 @@ function ConversationList({
           <button
             key={c.id}
             className="conv-chip"
-            title={`Click to copy title — search in Cursor sidebar\n${c.title}`}
-            onClick={() => void navigator.clipboard.writeText(c.title)}
+            title={
+              isClaude
+                ? `Click to copy resume command\n${c.title}`
+                : `Click to copy title — search in Cursor sidebar\n${c.title}`
+            }
+            onClick={() =>
+              void navigator.clipboard.writeText(
+                isClaude ? `claude --resume ${c.id}` : c.title,
+              )
+            }
           >
             <span className="conv-chip-title">{c.title}</span>
             {c.count > 1 && <span className="conv-chip-count">×{c.count}</span>}
@@ -353,9 +496,11 @@ function ConversationList({
 function GroupCard({
   group,
   costScale,
+  provider,
 }: {
   group: PRGroup
   costScale: number
+  provider: AiProvider
 }) {
   const tree = group.prs.length > 0 ? buildTree(group.prs) : []
   const ticket = group.ticket
@@ -405,7 +550,11 @@ function GroupCard({
         <div className="stack-desc-row">{group.description}</div>
       )}
       {conversations.length > 0 && (
-        <ConversationList refs={conversations} costScale={costScale} />
+        <ConversationList
+          refs={conversations}
+          costScale={costScale}
+          provider={provider}
+        />
       )}
       {tree.length > 0 && (
         <div className="stack-body">
@@ -697,6 +846,20 @@ function UsageStrip({ usage }: { usage: UsageData | null }) {
     month: 'short',
     day: 'numeric',
   })
+  if (usage.provider === 'claude') {
+    return (
+      <div className="usage-strip">
+        <span className="usage-strip-breakdown">
+          Claude Code ≈ <strong>{total}</strong> API-equivalent · {tokLabel}{' '}
+          tokens{' '}
+          <span className="usage-strip-cache">
+            ({formatTokens(cacheTokens)} cached)
+          </span>
+        </span>
+        <span className="usage-strip-reset">month to date</span>
+      </div>
+    )
+  }
   return (
     <div className="usage-strip">
       <span className="usage-strip-breakdown">
@@ -721,6 +884,8 @@ function usagePeriodLabel(cycle: UsageData['cycle']): string {
 }
 
 function computeCostScale(usage: UsageData): number {
+  // Claude costs are list-price estimates — no billed total to scale to
+  if (usage.provider === 'claude') return 1
   const billed =
     usage.cycle.includedCents +
     usage.cycle.bonusCents +
@@ -736,35 +901,39 @@ function UsageModelsList({ usage }: { usage: UsageData }) {
       <div className="usage-period">
         {usagePeriodLabel(usage.cycle)}
         <span className="usage-legend">
-          raw internal cost → scaled to billed total
+          {usage.provider === 'claude'
+            ? 'API list-price estimate'
+            : 'raw internal cost → scaled to billed total'}
         </span>
       </div>
       <ul className="usage-model-list">
         {[...usage.models]
           .sort((a, b) => b.cents * scale - a.cents * scale)
           .map((m) => {
-          const realTok = m.inputTokens + m.outputTokens
-          const cacheTok = m.cacheWriteTokens + m.cacheReadTokens
-          const scaledCents = m.cents * scale
-          return (
-            <li key={m.model} className="usage-model-item">
-              <span className="usage-model-name">{m.model}</span>
-              <span className="usage-model-tokens">
-                {formatTokens(realTok)}
-                {cacheTok > 0 && (
-                  <span className="usage-cache-hint">
-                    {' '}
-                    ({formatTokens(cacheTok)} cache)
-                  </span>
-                )}
-              </span>
-              <span className="usage-model-cost">
-                <s className="cost-raw">{formatCents(m.cents)}</s>{' '}
-                {formatCents(scaledCents)}
-              </span>
-            </li>
-          )
-        })}
+            const realTok = m.inputTokens + m.outputTokens
+            const cacheTok = m.cacheWriteTokens + m.cacheReadTokens
+            const scaledCents = m.cents * scale
+            return (
+              <li key={m.model} className="usage-model-item">
+                <span className="usage-model-name">{m.model}</span>
+                <span className="usage-model-tokens">
+                  {formatTokens(realTok)}
+                  {cacheTok > 0 && (
+                    <span className="usage-cache-hint">
+                      {' '}
+                      ({formatTokens(cacheTok)} cache)
+                    </span>
+                  )}
+                </span>
+                <span className="usage-model-cost">
+                  {usage.provider !== 'claude' && (
+                    <s className="cost-raw">{formatCents(m.cents)}</s>
+                  )}{' '}
+                  {formatCents(scaledCents)}
+                </span>
+              </li>
+            )
+          })}
       </ul>
     </div>
   )
@@ -916,7 +1085,11 @@ function UsageConvsList({ usage }: { usage: UsageData }) {
     <div className="usage-panel-content usage-convos">
       <div className="usage-period">
         {usagePeriodLabel(usage.cycle)}
-        <span className="usage-legend">raw → scaled</span>
+        <span className="usage-legend">
+          {usage.provider === 'claude'
+            ? 'API list-price estimate'
+            : 'raw → scaled'}
+        </span>
       </div>
       <DailyCostChart
         events={usage.allEvents ?? allEvents}
@@ -948,7 +1121,9 @@ function UsageConvsList({ usage }: { usage: UsageData }) {
                 )}
               </span>
               <span className="usage-conv-meta">
-                <s className="cost-raw">{formatCents(c.costCents)}</s>{' '}
+                {usage.provider !== 'claude' && (
+                  <s className="cost-raw">{formatCents(c.costCents)}</s>
+                )}{' '}
                 {formatCents(c.costCents * scale)} ·{' '}
                 {formatTokens(
                   c.events.reduce(
@@ -961,8 +1136,7 @@ function UsageConvsList({ usage }: { usage: UsageData }) {
                   (
                   {formatTokens(
                     c.events.reduce(
-                      (s, e) =>
-                        s + e.cacheWriteTokens + e.cacheReadTokens,
+                      (s, e) => s + e.cacheWriteTokens + e.cacheReadTokens,
                       0,
                     ),
                   )}{' '}
@@ -1089,9 +1263,11 @@ function SidePanel({
 function GroupList({
   groups,
   costScale,
+  provider,
 }: {
   groups: PRGroup[]
   costScale: number
+  provider: AiProvider
 }) {
   const { active, archived } = splitByAge(groups)
   return (
@@ -1101,6 +1277,7 @@ function GroupList({
           key={g.ticket?.id ?? `${g.name}-${g.prs[0]?.number}`}
           group={g}
           costScale={costScale}
+          provider={provider}
         />
       ))}
       {archived.length > 0 && (
@@ -1117,6 +1294,7 @@ function GroupList({
                 key={g.ticket?.id ?? `${g.name}-${g.prs[0]?.number}`}
                 group={g}
                 costScale={costScale}
+                provider={provider}
               />
             ))}
           </div>
@@ -1215,10 +1393,12 @@ export default function App() {
 
       <div className="dashboard-layout">
         <div className="dashboard-main">
+          {data && <ShippedList prs={data.shipped} />}
           {data && (
             <GroupList
               groups={data.groups}
               costScale={usage ? computeCostScale(usage) : 1}
+              provider={data.aiProvider ?? 'cursor'}
             />
           )}
         </div>

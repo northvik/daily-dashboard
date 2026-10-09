@@ -18,10 +18,40 @@ export interface PR {
   description: string
   base: string
   merged?: boolean
+  /** ISO timestamp — merged PRs only */
+  mergedAt?: string
+  /** Per-cluster deploy status — merged PRs with a known image */
+  deploys?: EnvDeploy[]
   status?: PRStatus
   depth: number
   /** ISO timestamp — last PR activity */
   updatedAt?: string
+}
+
+export type DeployState =
+  | 'deployed'
+  | 'applying'
+  | 'promoting'
+  | 'failed'
+  | 'pending'
+  | 'release-only'
+  /** Runs a release/chart version that can't be mapped back to PRs */
+  | 'untracked'
+
+export interface EnvDeploy {
+  env: string
+  /** Compact label, e.g. "EU" */
+  short: string
+  state: DeployState
+  /** Promote PR or apply run */
+  url?: string
+  at?: string
+  /** Pinned tag on the cluster */
+  tag?: string
+  /** DEPLOY_LIVE_CHECK only: is the pinned image running right now? */
+  live?: 'running' | 'not-running' | 'unknown'
+  /** Workflow deploys: stack name shown once before its env chips */
+  group?: string
 }
 
 export interface TicketInfo {
@@ -57,6 +87,10 @@ export interface DashboardData {
   groups: PRGroup[]
   /** Linear tickets in progress with no linked open PR */
   orphanTickets: TicketInfo[]
+  /** My PRs merged in the last week that are rolling out (or just finished) */
+  shipped: PR[]
+  /** Source of conversation chips */
+  aiProvider: AiProvider
   fetchedAt: Date
 }
 
@@ -101,7 +135,9 @@ export interface DailyData {
   formatVersion?: number
 }
 
-/* ── Cursor usage ────────────────────────────────────────────────── */
+/* ── Usage (Claude Code or Cursor) ───────────────────────────────── */
+
+export type AiProvider = 'claude' | 'cursor'
 
 export interface UsageCycle {
   startMs: number
@@ -143,6 +179,7 @@ export interface UsageConversation {
 }
 
 export interface UsageData {
+  provider: AiProvider
   cycle: UsageCycle
   models: UsageModel[]
   conversations: UsageConversation[]

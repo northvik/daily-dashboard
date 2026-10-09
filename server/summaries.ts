@@ -1,12 +1,12 @@
 /**
- * Cursor SDK summary enrichment with disk cache (4h TTL).
+ * AI summary enrichment (Claude or Cursor, see ai.ts) with disk cache (4h TTL).
  * Runs server-side only. Cache lives in data/ (gitignored).
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { SummaryOverride } from './stacks.ts'
-import { env } from './env.ts'
+import { aiAvailable, runAgent } from './ai.ts'
 
 const CACHE_FILE = 'data/stack-overrides.json'
 const MAX_AGE_MS = 4 * 60 * 60 * 1000
@@ -31,9 +31,13 @@ function saveCache(cwd: string, entries: CachedEntry[]): void {
   )
 }
 
+let inFlight: Promise<void> | null = null
+
 /**
  * Enrich multi-PR groups with AI-generated summaries.
- * Only calls Cursor for stacks not already cached (or cached >4h ago).
+ * Returns cached summaries right away (stale ones included) and refreshes
+ * missing or >4h-old entries in the background — one agent run at a time.
+ * New summaries show up on the next dashboard refresh.
  */
 export async function enrichSummaries(
   stacks: { ticket: string; prs: string[] }[],
@@ -41,36 +45,32 @@ export async function enrichSummaries(
   if (stacks.length === 0) return []
 
   const cwd = process.cwd()
-  const cache = loadCache(cwd)
-  const cacheMap = new Map(cache.map((e) => [e.ticket, e]))
+  const cacheMap = new Map(loadCache(cwd).map((e) => [e.ticket, e]))
   const now = Date.now()
 
-  const fresh: CachedEntry[] = []
-  const stale: { ticket: string; prs: string[] }[] = []
-
-  for (const stack of stacks) {
+  const stale = stacks.filter((stack) => {
     const cached = cacheMap.get(stack.ticket)
-    if (cached && now - cached.cachedAt < MAX_AGE_MS) {
-      fresh.push(cached)
-    } else {
-      stale.push(stack)
-    }
+    return !cached || now - cached.cachedAt >= MAX_AGE_MS
+  })
+
+  if (stale.length > 0 && aiAvailable() && !inFlight) {
+    console.log(
+      `[summaries] ${stacks.length - stale.length} cached, ${stale.length} to enrich: ${stale.map((s) => s.ticket).join(', ')}`,
+    )
+    inFlight = generate(cwd, stale).finally(() => {
+      inFlight = null
+    })
   }
 
-  if (stale.length === 0) return fresh
+  return stacks
+    .map((s) => cacheMap.get(s.ticket))
+    .filter(Boolean) as CachedEntry[]
+}
 
-  const apiKey = env.cursorApiKey
-  if (!apiKey) {
-    const fallback = stale
-      .map((s) => cacheMap.get(s.ticket))
-      .filter(Boolean) as CachedEntry[]
-    return [...fresh, ...fallback]
-  }
-
-  console.log(
-    `[summaries] ${fresh.length} cached, ${stale.length} to enrich: ${stale.map((s) => s.ticket).join(', ')}`,
-  )
-
+async function generate(
+  cwd: string,
+  stale: { ticket: string; prs: string[] }[],
+): Promise<void> {
   const stackList = stale
     .map(
       (s) =>
@@ -87,33 +87,27 @@ export async function enrichSummaries(
   ].join('\n')
 
   try {
-    const { Agent } = await import('@cursor/sdk')
-    const result = await Agent.prompt(prompt, {
-      apiKey,
-      model: { id: 'claude-opus-4-6' },
-      local: { cwd },
+    const run = await runAgent(prompt, {
+      mcp: false,
+      tag: 'summaries',
+      effort: 'low',
     })
+    if (!run) return
 
-    if (result.status !== 'finished' || !result.result) {
-      console.error('[summaries] Cursor run status:', result.status)
-      return fresh
-    }
-
-    const jsonMatch = result.result.match(/\[[\s\S]*\]/)
+    const jsonMatch = run.text.match(/\[[\s\S]*\]/)
     if (!jsonMatch) {
       console.error('[summaries] Could not parse JSON from response')
-      return fresh
+      return
     }
 
     const parsed: SummaryOverride[] = JSON.parse(jsonMatch[0])
-    const stamped: CachedEntry[] = parsed.map((e) => ({ ...e, cachedAt: now }))
-
-    for (const entry of stamped) cacheMap.set(entry.ticket, entry)
+    const cachedAt = Date.now()
+    // Re-read so we don't clobber anything written while the agent ran
+    const cacheMap = new Map(loadCache(cwd).map((e) => [e.ticket, e]))
+    for (const e of parsed) cacheMap.set(e.ticket, { ...e, cachedAt })
     saveCache(cwd, [...cacheMap.values()])
-
-    return [...fresh, ...stamped]
+    console.log(`[summaries] Saved ${parsed.length} summaries`)
   } catch (err) {
     console.error('[summaries] Error:', err)
-    return fresh
   }
 }

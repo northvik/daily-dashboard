@@ -1,6 +1,6 @@
 /**
  * Vite dev-server plugin — serves /api/dashboard and /api/daily.
- * All GitHub/Linear/Cursor calls run server-side; no tokens reach the client.
+ * All GitHub/Linear/AI calls run server-side; no tokens reach the client.
  */
 
 import type { Plugin } from 'vite'
@@ -68,6 +68,8 @@ export function dashboardPlugin(): Plugin {
           try {
             await readBody(req).catch(() => '')
             assertEnv()
+            const { resetAgentCooldown } = await import('./ai.ts')
+            resetAgentCooldown()
             const data = await generateDaily(todayDate(), { force: true })
             json(res, 200, data)
           } catch (err) {
@@ -79,17 +81,18 @@ export function dashboardPlugin(): Plugin {
 
         if (url === '/api/usage' && req.method === 'GET') {
           try {
-            const { fetchUsage } = await import('./cursor-usage.ts')
+            const { fetchUsage } = await import('./usage.ts')
             const { getConversationTitles } = await import('./conversations.ts')
             const data = await fetchUsage()
             if (!data) {
               json(res, 200, { status: 'unavailable' })
               return
             }
-            const titleMap = getConversationTitles(
+            const titleMap = await getConversationTitles(
               data.conversations.map((c) => c.id),
             )
             json(res, 200, {
+              provider: data.provider,
               cycle: data.cycle,
               models: data.models,
               conversations: data.conversations.map((c) => ({

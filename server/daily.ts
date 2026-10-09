@@ -1,10 +1,11 @@
 /**
  * Daily standup generation — gathers GitHub / Linear context with links,
- * then asks a local Cursor agent (Opus 4.6 + Slack/Linear MCP) to produce
+ * then asks the AI agent (AI_PROVIDER: Claude or Cursor) to produce
  * subject-grouped standup notes. Cached to data/daily-YYYY-MM-DD.json.
  *
- * Max Cursor cost is uncontrolled on manual refresh — cron still uses the 12h cache.
- * Slack is fetched by the agent via Cursor MCP (no SLACK_USER_TOKEN needed).
+ * Agent cost is uncontrolled on manual refresh — cron still uses the 12h cache.
+ * Slack source: SLACK_USER_TOKEN → direct search.messages (one turn, no tools);
+ * otherwise the agent searches Slack through its MCP tools.
  */
 
 import {
@@ -23,6 +24,8 @@ import {
 } from './github.ts'
 import { fetchLinearIssues, fetchLinearUpdatedSince } from './linear.ts'
 import { env } from './env.ts'
+import { runAgent } from './ai.ts'
+import { fetchMyMessages } from './slack.ts'
 
 /* ── Types ───────────────────────────────────────────────────────── */
 
@@ -155,6 +158,23 @@ interface RawContext {
   githubOpen: string[]
   linearRecent: string[]
   linearStarted: string[]
+  /** Set when fetched directly via SLACK_USER_TOKEN */
+  slackMessages?: string[]
+  /** Direct Slack fetch failed — agent falls back to MCP */
+  slackError?: string
+}
+
+async function fetchSlack(
+  from: string,
+  to: string,
+): Promise<Pick<RawContext, 'slackMessages' | 'slackError'>> {
+  if (!env.slackUserToken || !env.slackUserId) return {}
+  try {
+    return { slackMessages: await fetchMyMessages(from, to) }
+  } catch (err) {
+    console.warn('[daily] Slack direct fetch failed:', err)
+    return { slackError: String(err) }
+  }
 }
 
 async function gatherRawContext(date: string): Promise<RawContext> {
@@ -166,18 +186,20 @@ async function gatherRawContext(date: string): Promise<RawContext> {
 
   const sinceISO = new Date(`${yDay}T00:00:00`).toISOString()
 
-  const [updated, merged, open, linearRecent, linearStarted] =
+  const [updated, merged, open, linearRecent, linearStarted, slack] =
     await Promise.all([
       fetchPRsUpdatedSince(yDay).catch(() => []),
       fetchPRsMergedOn(yDay).catch(() => []),
       fetchOpenPRs().catch(() => []),
       fetchLinearUpdatedSince(sinceISO).catch(() => []),
       fetchLinearIssues('started').catch(() => []),
+      fetchSlack(yDay, date),
     ])
 
   return {
     yesterdayDate: yDay,
     todayDate: date,
+    ...slack,
     githubYesterday: updated.map((item) => {
       const { repo } = repoFromUrl(item.repository_url)
       return `${repo}#${item.number}: ${item.title}\n  ${item.html_url}`
@@ -456,36 +478,54 @@ function mergeTags(
   return [...list, tag]
 }
 
-/* ── Cursor + MCP enrichment ─────────────────────────────────────── */
+/* ── Agent enrichment ────────────────────────────────────────────── */
 
-async function enrichWithCursor(
+type SlackMode = 'direct' | 'mcp' | 'none'
+
+async function enrichWithAgent(
   ctx: RawContext,
   generationCount: number,
 ): Promise<DailyData | null> {
-  const apiKey = env.cursorApiKey
-  if (!apiKey) return null
-
   const slackId = env.slackUserId
-  const slackResearch = slackId
-    ? [
-        '1. REQUIRED before writing JSON: call Slack MCP tools',
-        '   slack_search_public_and_private (preferred) or slack_search_public with query:',
-        `   from:<@${slackId}> after:${ctx.yesterdayDate} before:${ctx.todayDate}`,
-        '   Infer commitments, blockers, decisions from results.',
-        '2. Use Linear/GitHub links below for more context if helpful.',
-        '3. Never invent an alert about MCP being unavailable — if Slack tools are missing, just omit Slack context.',
-      ]
-    : [
-        '1. No Slack user id configured — do not call Slack MCP.',
-        '2. Use Linear/GitHub links below for more context if helpful.',
-      ]
+  const slackMode: SlackMode = ctx.slackMessages
+    ? 'direct'
+    : slackId
+      ? 'mcp'
+      : 'none'
+  console.log(
+    '[daily] Slack source:',
+    slackMode === 'direct'
+      ? `direct (${ctx.slackMessages?.length ?? 0} msgs)`
+      : slackMode,
+  )
+
+  const slackResearch =
+    slackMode === 'direct'
+      ? [
+          '1. My Slack messages are in the seed data below — do not call any tools.',
+          '   Infer commitments, blockers, decisions from them.',
+          '2. Use the Linear/GitHub links below for more context if helpful.',
+        ]
+      : slackMode === 'mcp'
+        ? [
+            '1. REQUIRED before writing JSON: call Slack MCP tools',
+            '   slack_search_public_and_private (preferred) or slack_search_public with query:',
+            `   from:<@${slackId}> after:${ctx.yesterdayDate} before:${ctx.todayDate}`,
+            '   Infer commitments, blockers, decisions from results.',
+            '2. Use Linear/GitHub links below for more context if helpful.',
+            '3. Never invent an alert about MCP being unavailable — if Slack tools are missing, just omit Slack context.',
+          ]
+        : [
+            '1. No Slack user id configured — do not call Slack MCP.',
+            '2. Use Linear/GitHub links below for more context if helpful.',
+          ]
 
   const prompt = [
     'You prepare my daily standup notes for a live meeting.',
     `Today is ${ctx.todayDate}. Yesterday was ${ctx.yesterdayDate}.`,
     slackId ? `My Slack user id is ${slackId}.` : 'Slack is not configured.',
     '',
-    '## Research first (MCP)',
+    slackMode === 'direct' ? '## Research' : '## Research first (MCP)',
     ...slackResearch,
     '',
     '## Output — ONLY JSON (no fences, no commentary)',
@@ -548,63 +588,38 @@ async function enrichWithCursor(
     '',
     '### Linear in progress',
     ctx.linearStarted.join('\n') || '(none)',
+    ...(slackMode === 'direct'
+      ? [
+          '',
+          '### My Slack messages (yesterday + today)',
+          ctx.slackMessages?.join('\n') || '(none)',
+        ]
+      : []),
   ].join('\n')
 
   try {
-    const { Agent } = await import('@cursor/sdk')
-    // Local SDK agent — separate from the IDE chat. Plugin Slack MCP is
-    // loaded via settingSources; IDE "MCPs are up" does not imply this run sees them.
-    await using agent = await Agent.create({
-      apiKey,
-      model: { id: 'claude-opus-4-6' },
-      local: {
-        cwd: process.cwd(),
-        settingSources: ['plugins', 'user'],
-      },
+    const run = await runAgent(prompt, {
+      mcp: slackMode === 'mcp',
+      tag: 'daily',
     })
+    if (!run) return null
 
-    const run = await agent.send(prompt)
-    let availableTools: string[] = []
-    let slackToolCalls = 0
-    const textParts: string[] = []
-
-    for await (const event of run.stream()) {
-      if (event.type === 'system' && event.subtype === 'init' && event.tools) {
-        availableTools = event.tools
-        const slackTools = availableTools.filter(isSlackToolName)
-        console.log(
-          '[daily] Slack tools on agent:',
-          slackTools.length ? slackTools.join(', ') : '(none)',
-        )
-      }
-      if (event.type === 'tool_call' && isSlackToolName(event.name)) {
-        slackToolCalls += 1
-        if (event.status === 'error') {
-          console.warn('[daily] Slack tool error:', event.name, event.result)
-        }
-      }
-      if (event.type === 'assistant') {
-        for (const block of event.message.content) {
-          if (block.type === 'text') textParts.push(block.text)
-        }
-      }
+    const slackTools = run.tools.filter(isSlackToolName)
+    const slackToolCalls = run.toolCalls.filter(isSlackToolName).length
+    if (slackMode === 'mcp') {
+      console.log(
+        '[daily] Slack tools on agent:',
+        slackTools.length ? slackTools.join(', ') : '(none)',
+      )
+    }
+    for (const name of run.toolErrors.filter(isSlackToolName)) {
+      console.warn('[daily] Slack tool error:', name)
     }
 
-    const result = await run.wait()
-    if (result.status !== 'finished') {
-      console.error('[daily] Cursor status:', result.status, result.error)
-      return null
-    }
-
-    const rawText = result.result ?? textParts.join('\n')
-    if (!rawText) {
-      console.error('[daily] Empty Cursor result')
-      return null
-    }
-
+    const rawText = run.text
     const jsonMatch = rawText.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
-      console.error('[daily] Could not parse JSON from Cursor')
+      console.error('[daily] Could not parse JSON from agent')
       return null
     }
 
@@ -614,14 +629,14 @@ async function enrichWithCursor(
       alerts?: DailyAlert[]
     }
 
-    const slackToolsAvailable = availableTools.some(isSlackToolName)
+    const slackToolsAvailable = slackTools.length > 0
     const alerts = sanitizeAlerts(parsed.alerts, {
-      slackConfigured: Boolean(slackId),
+      slackMode,
+      slackError: ctx.slackError,
       slackToolsAvailable,
-      slackToolCalls,
     })
 
-    if (slackId && slackToolsAvailable && slackToolCalls === 0) {
+    if (slackMode === 'mcp' && slackToolsAvailable && slackToolCalls === 0) {
       console.warn(
         '[daily] Slack tools were available but unused — standup may miss channel context',
       )
@@ -637,7 +652,7 @@ async function enrichWithCursor(
       formatVersion: FORMAT_VERSION,
     }
   } catch (err) {
-    console.error('[daily] Cursor error:', err)
+    console.error('[daily] Agent error:', err)
     return null
   }
 }
@@ -646,9 +661,9 @@ async function enrichWithCursor(
 function sanitizeAlerts(
   alerts: DailyAlert[] | undefined,
   opts: {
-    slackConfigured: boolean
+    slackMode: SlackMode
+    slackError?: string
     slackToolsAvailable: boolean
-    slackToolCalls: number
   },
 ): DailyAlert[] {
   const cleaned = (Array.isArray(alerts) ? alerts : []).filter((a) => {
@@ -657,18 +672,14 @@ function sanitizeAlerts(
     return a.type === 'missing-ticket' || a.type === 'stale-pr'
   })
 
-  if (opts.slackConfigured && !opts.slackToolsAvailable) {
+  if (opts.slackMode === 'mcp' && !opts.slackToolsAvailable) {
+    const why = opts.slackError
+      ? `Slack API call failed (${opts.slackError}) and the`
+      : 'The'
     cleaned.push({
       type: 'slack-gap',
-      message:
-        'Daily’s Cursor SDK agent did not load Slack plugin tools (IDE chat MCPs are separate). Notes are GitHub/Linear only.',
+      message: `${why} ${env.aiProvider} agent did not load Slack MCP tools. Notes are GitHub/Linear only.`,
     })
-  } else if (
-    opts.slackConfigured &&
-    opts.slackToolsAvailable &&
-    opts.slackToolCalls === 0
-  ) {
-    // Soft signal only in logs — avoid noisy UI when the model skipped Slack.
   }
 
   return cleaned.slice(0, 2)
@@ -701,7 +712,7 @@ export async function generateDaily(
   )
   const ctx = await gatherRawContext(date)
 
-  let data = await enrichWithCursor(ctx, generationCount)
+  let data = await enrichWithAgent(ctx, generationCount)
   if (!data) {
     data = heuristicDaily(ctx, generationCount)
   }

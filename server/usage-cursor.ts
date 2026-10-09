@@ -1,5 +1,5 @@
 /**
- * Cursor usage — reads the local auth token from state.vscdb, fetches
+ * Cursor usage (AI_PROVIDER=cursor) — reads the local auth token from state.vscdb, fetches
  * billing cycle totals + per-conversation cost from api2.cursor.sh.
  * Cached 5 min. Zero LLM tokens.
  */
@@ -9,59 +9,13 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 
-/* ── Types ───────────────────────────────────────────────────────── */
-
-export interface CycleInfo {
-  startMs: number
-  endMs: number
-  /** Included plan allowance used */
-  includedCents: number
-  /** Plan limit */
-  limitCents: number
-  /** Bonus from model providers (free) */
-  bonusCents: number
-  percentUsed: number
-  /** On-demand overage spend */
-  onDemandCents: number
-  /** Team pool limit */
-  teamPoolCents: number
-}
-
-export interface ModelUsage {
-  model: string
-  cents: number
-  inputTokens: number
-  outputTokens: number
-  cacheWriteTokens: number
-  cacheReadTokens: number
-}
-
-export interface RequestEvent {
-  ts: number
-  model: string
-  cents: number
-  inputTokens: number
-  outputTokens: number
-  cacheWriteTokens: number
-  cacheReadTokens: number
-}
-
-export interface ConversationCost {
-  id: string
-  costCents: number
-  requestCount: number
-  lastEventAt: number
-  events: RequestEvent[]
-}
-
-export interface UsageSummary {
-  cycle: CycleInfo
-  models: ModelUsage[]
-  conversations: ConversationCost[]
-  /** All events (including null/agent convId) for the daily chart */
-  allEvents: RequestEvent[]
-  fetchedAt: string
-}
+import type {
+  ConversationCost,
+  CycleInfo,
+  ModelUsage,
+  RequestEvent,
+  UsageSummary,
+} from './usage.ts'
 
 /* ── Auth token from state.vscdb ─────────────────────────────────── */
 
@@ -277,6 +231,7 @@ async function buildUsageSummary(): Promise<UsageSummary> {
     .sort((a, b) => b.lastEventAt - a.lastEventAt)
 
   return {
+    provider: 'cursor',
     cycle,
     models,
     conversations,
@@ -287,7 +242,7 @@ async function buildUsageSummary(): Promise<UsageSummary> {
 
 /* ── Cache ────────────────────────────────────────────────────────── */
 
-const CACHE_PATH = join(process.cwd(), 'data', 'usage-cache.json')
+const CACHE_PATH = join(process.cwd(), 'data', 'usage-cache-cursor.json')
 const TTL_MS = 5 * 60 * 1000
 
 let _inFlight: Promise<UsageSummary | null> | null = null
@@ -321,7 +276,7 @@ function writeCache(data: UsageSummary): void {
 
 /* ── Public API ──────────────────────────────────────────────────── */
 
-export async function fetchUsage(): Promise<UsageSummary | null> {
+export async function fetchCursorUsage(): Promise<UsageSummary | null> {
   const cached = readCache()
   if (cached) return cached
 
@@ -341,11 +296,4 @@ export async function fetchUsage(): Promise<UsageSummary | null> {
     })
 
   return _inFlight
-}
-
-/** Quick map of conversationId → costCents for PR chip annotation. */
-export async function getConversationCosts(): Promise<Map<string, number>> {
-  const data = await fetchUsage()
-  if (!data) return new Map()
-  return new Map(data.conversations.map((c) => [c.id, c.costCents]))
 }
